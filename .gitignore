@@ -1,0 +1,43 @@
+/target
+firmware/*/target
+*.db
+*.db-journal
+.DS_Store
+._*
+.wt-pr37/
+__pycache__/
+*.pyc
+docker-compose.override.yml
+
+# Environment files (may contain secrets)
+.env
+# Python virtual environments
+.venv/
+venv/
+# ESP32 build cache (esp-idf-sys managed)
+.embuild/
+.env.local
+.env.*.local
+# Secret keys and credentials
+.secret_key
+*.key
+*.pem
+credentials.json
+.worktrees/
+# Security-sensitive files
+api_key*
+secrets/
+.env.production
+# IDE and editor files
+.vscode/settings.json
+.idea/
+# Build artifacts specific to this fork
+/deploy.log
+/security_audit.log
+# Security-sensitive files (added by secure fork)
+*.pdf
+
+# Test images
+photo_*.jpg
+zero-claw.jpeg
+zeroclaw.png

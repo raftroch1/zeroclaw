@@ -1,0 +1,451 @@
+# =============================================================================
+# ZeroClaw Hardened Configuration
+# =============================================================================
+# This configuration prioritizes security over convenience.
+# All settings are restrictive by default - relax only when necessary.
+#
+# Generated for: Ubuntu production deployment
+# Security Level: Maximum (Paranoid Mode)
+# Last Updated: 2026-02-19
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# SERVER CONFIGURATION
+# -----------------------------------------------------------------------------
+# SECURITY: Bind only to localhost to prevent remote access
+# RISK IF CHANGED: Binding to 0.0.0.0 exposes the service to network attacks
+[server]
+bind_address = "127.0.0.1"  # NEVER change to 0.0.0.0 in production
+port = 8080
+max_connections = 10        # Limit concurrent connections
+request_timeout_seconds = 30
+idle_timeout_seconds = 300
+
+# TLS Configuration (enable for production if exposing to network)
+# For localhost-only deployment, TLS is optional but still recommended
+[server.tls]
+enabled = false             # Enable if exposing to network
+cert_path = ""
+key_path = ""
+
+# -----------------------------------------------------------------------------
+# SECURITY SETTINGS
+# -----------------------------------------------------------------------------
+[security]
+# Encryption key path for data at rest
+# The key file MUST have 0600 permissions (owner read/write only)
+encryption_key_path = "/var/lib/zeroclaw/keys/master.key"
+
+# Enable all security validations
+strict_mode = true
+
+# Disable dangerous features
+allow_remote_skills = false  # CRITICAL: Prevents loading untrusted skills
+allow_unsigned_skills = false
+
+# Rate limiting to prevent abuse and DoS
+[security.rate_limiting]
+enabled = true
+requests_per_minute = 60    # Adjust based on legitimate usage
+burst_limit = 10
+block_duration_seconds = 300  # 5 minute block for rate limit violations
+
+# Input validation
+[security.input_validation]
+max_input_length = 100000   # 100KB max input
+max_file_size_mb = 10       # 10MB max file size
+sanitize_inputs = true
+block_injection_patterns = true
+
+# -----------------------------------------------------------------------------
+# AUTONOMY CONFIGURATION
+# -----------------------------------------------------------------------------
+# CRITICAL: Controls what ZeroClaw can do without human approval
+[autonomy]
+# Level options: "readonly", "supervised", "autonomous"
+# - readonly: Can only read, no modifications allowed
+# - supervised: Requires approval for destructive operations
+# - autonomous: Full autonomy (NOT RECOMMENDED for production)
+level = "supervised"        # RECOMMENDED for production
+
+# In supervised mode, these operations require approval:
+# - File deletion
+# - System command execution
+# - Network requests to external hosts
+# - Configuration changes
+
+# Timeout for approval requests (auto-deny after timeout)
+approval_timeout_seconds = 60
+
+# Maximum operations per session before requiring re-approval
+max_operations_per_approval = 5
+
+# -----------------------------------------------------------------------------
+# FILESYSTEM CONFIGURATION
+# -----------------------------------------------------------------------------
+# CRITICAL: Restricts what files ZeroClaw can access
+[filesystem]
+# SECURITY: Enable workspace-only mode to prevent access outside workspace
+workspace_only = true       # CRITICAL: Do not disable
+
+# Workspace directory - the ONLY directory ZeroClaw can access
+workspace_path = "/var/lib/zeroclaw/workspace"
+
+# Backup workspace files before modification
+enable_backups = true
+backup_path = "/var/lib/zeroclaw/backups"
+max_backup_count = 10
+
+# File operation limits
+max_file_operations_per_minute = 100
+max_total_workspace_size_mb = 1024  # 1GB workspace limit
+
+# Forbidden paths - BLOCKED even if somehow bypassed
+# These paths are explicitly denied regardless of other settings
+[filesystem.forbidden_paths]
+paths = [
+    "/etc",                 # System configuration
+    "/root",                # Root home directory
+    "/home",                # User home directories (except workspace)
+    "/var/log",             # System logs
+    "/var/run",             # Runtime data
+    "/tmp",                 # Temporary files (potential for exploitation)
+    "/dev",                 # Device files
+    "/proc",                # Process information
+    "/sys",                 # Kernel/system information
+    "/boot",                # Boot files
+    "/usr",                 # System binaries
+    "/bin",                 # Essential binaries
+    "/sbin",                # System binaries
+    "/lib",                 # Libraries
+    "/lib64",               # 64-bit libraries
+    "/opt",                 # Optional packages
+    "/mnt",                 # Mount points
+    "/media",               # Removable media
+    "/snap",                # Snap packages
+    "~/.ssh",               # SSH keys
+    "~/.gnupg",             # GPG keys
+    "~/.aws",               # AWS credentials
+    "~/.config",            # User configuration
+    "~/.local",             # User local data
+]
+
+# File type restrictions
+[filesystem.allowed_extensions]
+# Only allow these file extensions (empty = allow all)
+extensions = [
+    ".txt", ".md", ".json", ".yaml", ".yml", ".toml",
+    ".py", ".js", ".ts", ".rs", ".go", ".java", ".c", ".cpp", ".h",
+    ".html", ".css", ".scss", ".less",
+    ".sh", ".bash",
+    ".sql", ".csv",
+    ".gitignore", ".gitattributes",
+    ".dockerfile", ".dockerignore",
+    ".env.example",         # Note: .env is NOT allowed
+]
+
+# Explicitly blocked extensions (takes precedence)
+blocked_extensions = [
+    ".exe", ".dll", ".so", ".dylib",  # Binaries
+    ".key", ".pem", ".crt", ".p12",   # Certificates/keys
+    ".env",                             # Environment files with secrets
+    ".htpasswd", ".htaccess",           # Apache configs
+]
+
+# -----------------------------------------------------------------------------
+# COMMAND EXECUTION CONFIGURATION
+# -----------------------------------------------------------------------------
+# CRITICAL: Controls what shell commands ZeroClaw can execute
+[commands]
+# Enable command allowlisting (REQUIRED for production)
+use_allowlist = true        # CRITICAL: Do not disable
+
+# Command execution timeout
+timeout_seconds = 30
+
+# Maximum concurrent commands
+max_concurrent = 2
+
+# Maximum output capture size
+max_output_size_kb = 1024   # 1MB max output
+
+# Allowed commands - ONLY these commands can be executed
+# Be very selective - each command is a potential attack vector
+allowed_commands = [
+    # Version control (essential for development)
+    "git",
+    
+    # File operations (safe, read-mostly)
+    "ls",
+    "cat",
+    "head",
+    "tail",
+    "wc",
+    "find",
+    "grep",
+    "awk",
+    "sed",
+    "sort",
+    "uniq",
+    "diff",
+    "tree",
+    
+    # Directory operations
+    "pwd",
+    "mkdir",
+    "cp",
+    "mv",
+    
+    # Text processing
+    "echo",
+    "printf",
+    "cut",
+    "tr",
+    "jq",                   # JSON processing
+    
+    # Development tools
+    "npm",
+    "npx",
+    "yarn",
+    "pnpm",
+    "cargo",
+    "rustc",
+    "python3",
+    "pip3",
+    "node",
+    "go",
+    "make",
+    
+    # Testing
+    "pytest",
+    "jest",
+    "cargo test",
+    
+    # Documentation
+    "man",
+    "help",
+]
+
+# Explicitly blocked commands (defense in depth)
+# These are blocked even if they somehow appear in allowlist
+blocked_commands = [
+    "rm -rf /",
+    "sudo",
+    "su",
+    "chmod 777",
+    "chown",
+    "curl",                 # Network requests - use API if needed
+    "wget",                 # Network requests
+    "nc",                   # Netcat
+    "ncat",
+    "netcat",
+    "ssh",
+    "scp",
+    "rsync",
+    "mount",
+    "umount",
+    "dd",
+    "mkfs",
+    "fdisk",
+    "parted",
+    "systemctl",
+    "service",
+    "apt",
+    "apt-get",
+    "dpkg",
+    "snap",
+    "docker",
+    "podman",
+    "kubectl",
+    "eval",
+    "exec",
+    "source",
+    ".",                    # Source command
+    "export",
+    "env",
+    "printenv",
+    "set",
+    "unset",
+    "alias",
+    "crontab",
+    "at",
+    "kill",
+    "killall",
+    "pkill",
+    "reboot",
+    "shutdown",
+    "halt",
+    "poweroff",
+]
+
+# Block shell operators that could be used for injection
+blocked_patterns = [
+    ";",                    # Command chaining
+    "&&",                   # Conditional execution
+    "||",                   # Conditional execution
+    "`",                    # Command substitution
+    "$(",                   # Command substitution
+    ">",                    # Output redirection
+    ">>",                   # Append redirection
+    "<",                    # Input redirection
+    "|",                    # Piping (if needed, explicitly allow specific pipes)
+]
+
+# Environment for command execution
+[commands.environment]
+# Minimal environment - don't leak system info
+PATH = "/usr/local/bin:/usr/bin:/bin"
+HOME = "/var/lib/zeroclaw/workspace"
+LANG = "C.UTF-8"
+LC_ALL = "C.UTF-8"
+# Note: Sensitive env vars like API keys should NOT be set here
+
+# -----------------------------------------------------------------------------
+# SKILLFORGE CONFIGURATION
+# -----------------------------------------------------------------------------
+# SkillForge allows installing/creating custom skills
+# SECURITY WARNING: Enabling this is a significant security risk
+[skillforge]
+enabled = false             # CRITICAL: Keep disabled in production
+allow_community_skills = false
+allow_custom_skills = false
+skill_signature_verification = true  # Verify signatures even if disabled
+
+# If SkillForge must be enabled (not recommended):
+# - Only allow signed skills from trusted sources
+# - Review each skill manually before allowing
+# - Set up skill sandboxing
+
+# -----------------------------------------------------------------------------
+# NETWORK CONFIGURATION
+# -----------------------------------------------------------------------------
+[network]
+# Disable outbound network requests (paranoid mode)
+allow_outbound_requests = false
+
+# If outbound must be enabled, use strict allowlisting
+[network.allowed_hosts]
+hosts = [
+    # Add specific hosts if absolutely required
+    # Example: "api.github.com"
+]
+
+# Block these hosts regardless of allowlist
+[network.blocked_hosts]
+hosts = [
+    "metadata.google.internal",      # Cloud metadata
+    "169.254.169.254",               # AWS/Cloud metadata
+    "metadata.azure.com",
+    "localhost",                      # Prevent SSRF to local services
+    "127.0.0.1",
+    "0.0.0.0",
+    "[::1]",
+]
+
+# -----------------------------------------------------------------------------
+# AUDIT LOGGING
+# -----------------------------------------------------------------------------
+# CRITICAL: Enable comprehensive logging for security monitoring
+[logging]
+level = "info"              # Options: trace, debug, info, warn, error
+
+# Audit logging for security events
+[logging.audit]
+enabled = true              # CRITICAL: Keep enabled
+log_path = "/var/log/zeroclaw/audit.log"
+log_all_commands = true     # Log every command executed
+log_all_file_access = true  # Log every file access
+log_all_api_calls = true    # Log every API call
+log_failed_attempts = true  # Log failed operations
+
+# Log rotation
+[logging.rotation]
+max_size_mb = 100
+max_files = 10
+compress_old_logs = true
+
+# Syslog integration (optional)
+[logging.syslog]
+enabled = false
+facility = "local0"
+identifier = "zeroclaw"
+
+# -----------------------------------------------------------------------------
+# MEMORY AND RESOURCE LIMITS
+# -----------------------------------------------------------------------------
+# Optimized for older hardware
+[resources]
+# Memory limits
+max_memory_mb = 512         # Adjust based on available RAM
+max_context_tokens = 8192   # Limit context window size
+
+# CPU limits
+max_cpu_percent = 50        # Don't starve the system
+
+# Process limits
+max_child_processes = 5
+
+# Disk I/O limits
+max_disk_read_mb_per_second = 50
+max_disk_write_mb_per_second = 20
+
+# -----------------------------------------------------------------------------
+# SESSION CONFIGURATION
+# -----------------------------------------------------------------------------
+[session]
+# Session timeout for security
+max_idle_seconds = 1800     # 30 minutes
+max_duration_seconds = 28800  # 8 hours
+
+# Session limits
+max_sessions_per_user = 3
+
+# Auto-save session state
+auto_save = true
+auto_save_interval_seconds = 60
+
+# -----------------------------------------------------------------------------
+# MCP (Model Context Protocol) CONFIGURATION
+# -----------------------------------------------------------------------------
+[mcp]
+# Disable external MCP servers by default
+allow_external_servers = false
+allow_untrusted_servers = false
+
+# Server timeout
+server_timeout_seconds = 30
+
+# -----------------------------------------------------------------------------
+# API CONFIGURATION
+# -----------------------------------------------------------------------------
+[api]
+# API key requirement
+require_api_key = true
+api_key_path = "/var/lib/zeroclaw/keys/api.key"
+
+# API versioning
+version = "v1"
+
+# CORS (disable for localhost-only deployment)
+[api.cors]
+enabled = false
+allowed_origins = []        # Empty = disabled
+
+# -----------------------------------------------------------------------------
+# EMERGENCY SETTINGS
+# -----------------------------------------------------------------------------
+[emergency]
+# Kill switch - immediately stops all operations
+kill_switch_enabled = true
+kill_switch_path = "/var/lib/zeroclaw/KILL_SWITCH"
+
+# Panic mode - trigger on suspicious activity
+panic_on_blocked_command = true
+panic_on_path_traversal = true
+panic_on_rate_limit_exceeded = true
+
+# Notification on emergency events
+[emergency.notification]
+enabled = false             # Enable and configure if needed
+email = ""
+webhook_url = ""

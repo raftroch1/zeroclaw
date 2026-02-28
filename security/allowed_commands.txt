@@ -1,0 +1,280 @@
+# =============================================================================
+# ZeroClaw Allowed Commands List
+# =============================================================================
+# This file documents all commands allowed in the hardened configuration.
+# Each command includes:
+#   - Brief description
+#   - Security considerations
+#   - Why it's allowed
+#
+# To add a command to the allowlist, add it to hardened_config.toml under
+# [commands] allowed_commands = [...]
+#
+# WARNING: Each command is a potential attack vector. Only add commands
+# that are absolutely necessary for your use case.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# VERSION CONTROL
+# -----------------------------------------------------------------------------
+
+git
+    Description: Distributed version control system
+    Security: Generally safe, operates on repository files only
+    Use case: Essential for code management, commits, branching
+    Considerations: Can make network requests (fetch/push) if network enabled
+
+# -----------------------------------------------------------------------------
+# FILE INSPECTION (Read-Only)
+# -----------------------------------------------------------------------------
+
+ls
+    Description: List directory contents
+    Security: Safe - read-only operation
+    Use case: Navigate and inspect directories
+
+cat
+    Description: Display file contents
+    Security: Safe - read-only, but can show sensitive data if accessible
+    Use case: View file contents
+    Considerations: Combine with workspace-only to limit scope
+
+head
+    Description: Display first lines of file
+    Security: Safe - read-only
+    Use case: Preview file contents
+
+tail
+    Description: Display last lines of file
+    Security: Safe - read-only
+    Use case: View log files, file endings
+
+wc
+    Description: Word, line, character count
+    Security: Safe - read-only
+    Use case: File statistics
+
+find
+    Description: Search for files
+    Security: Safe - read-only metadata, but can enumerate filesystem
+    Use case: Locate files in workspace
+    Considerations: Workspace-only mode limits search scope
+
+grep
+    Description: Search file contents
+    Security: Safe - read-only
+    Use case: Find patterns in code
+
+tree
+    Description: Display directory tree
+    Security: Safe - read-only
+    Use case: Visualize project structure
+
+diff
+    Description: Compare files
+    Security: Safe - read-only
+    Use case: Code review, comparing versions
+
+# -----------------------------------------------------------------------------
+# FILE MANIPULATION
+# -----------------------------------------------------------------------------
+
+pwd
+    Description: Print working directory
+    Security: Safe - informational only
+    Use case: Navigation context
+
+mkdir
+    Description: Create directories
+    Security: Low risk when confined to workspace
+    Use case: Project structure setup
+
+cp
+    Description: Copy files
+    Security: Medium risk - can duplicate data
+    Use case: Backup files, create copies
+    Considerations: Workspace-only prevents copying sensitive files
+
+mv
+    Description: Move/rename files
+    Security: Medium risk - can reorganize files
+    Use case: File organization
+    Considerations: Workspace-only prevents moving system files
+
+# -----------------------------------------------------------------------------
+# TEXT PROCESSING
+# -----------------------------------------------------------------------------
+
+echo
+    Description: Print text
+    Security: Safe
+    Use case: Output messages, create simple files
+
+printf
+    Description: Formatted print
+    Security: Safe
+    Use case: Formatted output
+
+cut
+    Description: Extract text columns
+    Security: Safe - read-only processing
+    Use case: Parse structured text
+
+tr
+    Description: Translate characters
+    Security: Safe - text transformation
+    Use case: Character replacement
+
+awk
+    Description: Text processing language
+    Security: Medium risk - powerful scripting
+    Use case: Complex text processing
+    Considerations: Can execute code, but limited by process isolation
+
+sed
+    Description: Stream editor
+    Security: Medium risk - can modify files in place
+    Use case: Text substitution
+    Considerations: In-place editing (-i) should be monitored
+
+sort
+    Description: Sort lines
+    Security: Safe - read-only
+    Use case: Data organization
+
+uniq
+    Description: Filter duplicate lines
+    Security: Safe - read-only
+    Use case: Data deduplication
+
+jq
+    Description: JSON processor
+    Security: Safe - JSON parsing
+    Use case: API response processing, config manipulation
+
+# -----------------------------------------------------------------------------
+# DEVELOPMENT TOOLS - Node.js
+# -----------------------------------------------------------------------------
+
+node
+    Description: Node.js runtime
+    Security: Medium risk - can execute JavaScript
+    Use case: Run JavaScript applications
+    Considerations: Isolate with sandbox, limit network access
+
+npm
+    Description: Node package manager
+    Security: Medium risk - downloads packages from internet
+    Use case: Dependency management
+    Considerations: Can execute install scripts, requires network if enabled
+
+npx
+    Description: Node package executor
+    Security: Medium risk - downloads and runs packages
+    Use case: Run package binaries without install
+    Considerations: Downloads code from internet
+
+yarn
+    Description: Alternative Node package manager
+    Security: Same as npm
+    Use case: Dependency management
+
+pnpm
+    Description: Efficient Node package manager
+    Security: Same as npm
+    Use case: Dependency management
+
+# -----------------------------------------------------------------------------
+# DEVELOPMENT TOOLS - Rust
+# -----------------------------------------------------------------------------
+
+cargo
+    Description: Rust package manager and build tool
+    Security: Medium risk - compiles and runs code
+    Use case: Rust development
+    Considerations: Downloads crates from crates.io if network enabled
+
+rustc
+    Description: Rust compiler
+    Security: Low risk - compilation only
+    Use case: Compile Rust code
+
+# -----------------------------------------------------------------------------
+# DEVELOPMENT TOOLS - Python
+# -----------------------------------------------------------------------------
+
+python3
+    Description: Python interpreter
+    Security: Medium risk - can execute Python code
+    Use case: Python development, scripting
+    Considerations: Powerful scripting, isolate with sandbox
+
+pip3
+    Description: Python package manager
+    Security: Medium risk - downloads packages
+    Use case: Python dependencies
+    Considerations: Can execute setup.py scripts
+
+# -----------------------------------------------------------------------------
+# DEVELOPMENT TOOLS - Other
+# -----------------------------------------------------------------------------
+
+go
+    Description: Go programming language
+    Security: Medium risk - compiles and runs code
+    Use case: Go development
+
+make
+    Description: Build automation
+    Security: Medium risk - executes build commands
+    Use case: Project building
+    Considerations: Can run arbitrary shell commands in Makefile
+
+# -----------------------------------------------------------------------------
+# TESTING
+# -----------------------------------------------------------------------------
+
+pytest
+    Description: Python testing framework
+    Security: Medium risk - executes test code
+    Use case: Run Python tests
+
+jest
+    Description: JavaScript testing framework
+    Security: Medium risk - executes test code
+    Use case: Run JavaScript tests
+
+# -----------------------------------------------------------------------------
+# DOCUMENTATION
+# -----------------------------------------------------------------------------
+
+man
+    Description: Manual pages
+    Security: Safe - read-only documentation
+    Use case: Command reference
+
+help
+    Description: Shell built-in help
+    Security: Safe - informational
+    Use case: Command help
+
+# =============================================================================
+# BLOCKED COMMANDS (Never add these to allowlist)
+# =============================================================================
+#
+# sudo, su          - Privilege escalation
+# curl, wget        - Network requests (data exfiltration)
+# nc, netcat        - Network connections
+# ssh, scp, rsync   - Remote access
+# rm -rf /          - System destruction
+# chmod, chown      - Permission manipulation
+# mount, umount     - Filesystem mounting
+# dd                - Disk operations
+# systemctl, service - Service control
+# apt, dpkg         - Package management
+# docker, kubectl   - Container/orchestration
+# eval, exec        - Code execution
+# kill, killall     - Process termination
+# reboot, shutdown  - System control
+#
+# =============================================================================

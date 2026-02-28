@@ -1,0 +1,202 @@
+# =============================================================================
+# ZeroClaw Hardened Systemd Service
+# =============================================================================
+# This service file runs ZeroClaw with comprehensive security hardening.
+# 
+# Installation:
+#   sudo cp zeroclaw-hardened.service /etc/systemd/system/zeroclaw.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable zeroclaw
+#   sudo systemctl start zeroclaw
+#
+# =============================================================================
+
+[Unit]
+Description=ZeroClaw AI Coding Assistant (Hardened)
+Documentation=https://github.com/zeroclaw/zeroclaw
+After=network.target
+Wants=network.target
+
+# Service dependencies
+Requires=local-fs.target
+After=local-fs.target
+
+[Service]
+Type=simple
+
+# -----------------------------------------------------------------------------
+# User and Group
+# -----------------------------------------------------------------------------
+# Run as dedicated unprivileged user (NEVER as root)
+User=zeroclaw
+Group=zeroclaw
+
+# -----------------------------------------------------------------------------
+# Execution
+# -----------------------------------------------------------------------------
+ExecStart=/opt/zeroclaw/zeroclaw --config /etc/zeroclaw/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Working directory
+WorkingDirectory=/var/lib/zeroclaw/workspace
+
+# Environment
+Environment="ZEROCLAW_CONFIG=/etc/zeroclaw/config.toml"
+Environment="ZEROCLAW_LOG_LEVEL=info"
+Environment="RUST_BACKTRACE=1"
+
+# -----------------------------------------------------------------------------
+# Restart Policy
+# -----------------------------------------------------------------------------
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Timeout settings
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+# -----------------------------------------------------------------------------
+# Resource Limits
+# -----------------------------------------------------------------------------
+# Memory limits (adjust based on available RAM)
+MemoryMax=512M
+MemoryHigh=400M
+
+# CPU limits (50% of one core)
+CPUQuota=50%
+
+# Process limits
+LimitNPROC=50
+LimitNOFILE=1024
+
+# Prevent core dumps (security - may contain sensitive data)
+LimitCORE=0
+
+# Task limits
+TasksMax=20
+
+# -----------------------------------------------------------------------------
+# Filesystem Security
+# -----------------------------------------------------------------------------
+# Make / read-only except for specific directories
+ProtectSystem=strict
+
+# Protect home directories
+ProtectHome=true
+
+# Create private /tmp and /var/tmp
+PrivateTmp=true
+
+# Writable directories (only these are writable)
+ReadWritePaths=/var/lib/zeroclaw
+ReadWritePaths=/var/log/zeroclaw
+
+# Read-only access to config
+ReadOnlyPaths=/etc/zeroclaw
+
+# Inaccessible directories (defense in depth)
+InaccessiblePaths=/root
+InaccessiblePaths=/boot
+InaccessiblePaths=/mnt
+InaccessiblePaths=/media
+InaccessiblePaths=/srv
+
+# -----------------------------------------------------------------------------
+# Privilege Security
+# -----------------------------------------------------------------------------
+# Prevent privilege escalation
+NoNewPrivileges=true
+
+# Drop all capabilities
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Secure bits
+SecureBits=keep-caps
+
+# -----------------------------------------------------------------------------
+# Process Isolation
+# -----------------------------------------------------------------------------
+# Private /dev (only pseudo-devices)
+PrivateDevices=true
+
+# Private network (localhost only)
+# Uncomment if ZeroClaw doesn't need network access at all:
+# PrivateNetwork=true
+
+# Restrict address families (IPv4/IPv6 only, no raw sockets)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Private users namespace (for additional isolation)
+# Note: May cause issues on some systems - test before enabling
+# PrivateUsers=true
+
+# -----------------------------------------------------------------------------
+# Kernel Security
+# -----------------------------------------------------------------------------
+# Protect kernel tunables
+ProtectKernelTunables=true
+
+# Protect kernel modules
+ProtectKernelModules=true
+
+# Protect kernel logs
+ProtectKernelLogs=true
+
+# Protect control groups
+ProtectControlGroups=true
+
+# Protect the clock
+ProtectClock=true
+
+# Protect hostname
+ProtectHostname=true
+
+# Restrict realtime scheduling
+RestrictRealtime=true
+
+# Restrict SUID/SGID
+RestrictSUIDSGID=true
+
+# Lock memory (prevent swapping sensitive data)
+LockPersonality=true
+
+# -----------------------------------------------------------------------------
+# Syscall Filtering (Seccomp)
+# -----------------------------------------------------------------------------
+# Allow only necessary system calls
+SystemCallFilter=@system-service
+SystemCallFilter=~@mount @reboot @swap @module @raw-io @clock @cpu-emulation @debug @obsolete @privileged
+
+# Error mode for blocked syscalls (EPERM vs ENOSYS)
+SystemCallErrorNumber=EPERM
+
+# Native architecture only
+SystemCallArchitectures=native
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zeroclaw
+
+# Log filtering
+LogLevelMax=info
+
+# -----------------------------------------------------------------------------
+# UMask
+# -----------------------------------------------------------------------------
+# Restrictive file creation mask
+UMask=0027
+
+# -----------------------------------------------------------------------------
+# Security Score Optimization
+# -----------------------------------------------------------------------------
+# Run: systemd-analyze security zeroclaw
+# Target: 2.0 or lower (SAFE)
+
+[Install]
+WantedBy=multi-user.target
