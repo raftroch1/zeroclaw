@@ -124,7 +124,7 @@ impl OllamaProvider {
     }
 
     fn http_client(&self) -> Client {
-        crate::config::build_runtime_proxy_client_with_timeouts("provider.ollama", 300, 10)
+        crate::config::build_runtime_proxy_client_with_timeouts("provider.ollama", 600, 10)
     }
 
     fn resolve_request_details(&self, model: &str) -> anyhow::Result<(String, bool)> {

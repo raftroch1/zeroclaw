@@ -714,7 +714,7 @@ fn parse_tool_specific_xml_tags(text: &str) -> Vec<(String, serde_json::Value, S
 }
 
 /// Parse XML-style attributes from a tag (e.g., `command="ls -la"` from `<shell command="ls -la"/>`).
-fn parse_xml_attributes(attr_content: &str, tool_name: &str) -> Option<serde_json::Value> {
+fn parse_xml_attributes(attr_content: &str, _tool_name: &str) -> Option<serde_json::Value> {
     let mut args = serde_json::Map::new();
     
     // Simple regex-like parsing for key="value" or key='value' pairs
@@ -746,7 +746,7 @@ fn parse_xml_attributes(attr_content: &str, tool_name: &str) -> Option<serde_jso
             let end = remaining[1..].find('\'')?;
             (&remaining[1..1 + end], 2 + end)
         } else {
-            let end = remaining.find(char::is_whitespace).unwrap_or(remaining.len());
+            let end = remaining.find(|c: char| c.is_whitespace()).unwrap_or(remaining.len());
             (&remaining[..end], end)
         };
         
@@ -979,7 +979,7 @@ fn parse_tool_calls(response: &str) -> (String, Vec<ParsedToolCall>) {
                     name: name.clone(),
                     arguments: args.clone(),
                 });
-                cleaned_text = cleaned_text.replace(&raw, "");
+                cleaned_text = cleaned_text.replace(raw.as_str(), "");
             }
             if !cleaned_text.trim().is_empty() {
                 text_parts.push(cleaned_text.trim().to_string());
