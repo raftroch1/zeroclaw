@@ -16,6 +16,7 @@ use crate::security::pairing::{constant_time_eq, is_public_bind, PairingGuard};
 use crate::security::SecurityPolicy;
 use crate::tools;
 use crate::util::truncate_with_ellipsis;
+use crate::agent::Agent;
 use anyhow::{Context, Result};
 use axum::{
     body::Bytes,
@@ -346,7 +347,7 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
     let _tools_registry = Arc::new(tools::all_tools_with_runtime(
         Arc::new(config.clone()),
         &security,
-        runtime,
+        Arc::clone(&runtime) as Arc<dyn runtime::RuntimeAdapter>,
         Arc::clone(&mem),
         composio_key,
         composio_entity_id,
@@ -712,6 +713,96 @@ async fn run_gateway_chat_with_multimodal(
         .await
 }
 
+/// Build an Agent from gateway state for tool-enabled chat
+fn build_agent_from_state(
+    state: &AppState,
+    provider_label: &str,
+    model_label: &str,
+) -> anyhow::Result<crate::agent::Agent> {
+    use crate::agent;
+    use crate::agent::dispatcher::NativeToolDispatcher;
+    use crate::agent::memory_loader::DefaultMemoryLoader;
+    use crate::agent::prompt::SystemPromptBuilder;
+    use crate::providers;
+    use crate::runtime;
+    use crate::security::SecurityPolicy;
+
+    let config = state.config.lock();
+    let workspace_dir = config.workspace_dir.clone();
+    let identity_config = config.identity.clone();
+
+    // Create security policy for tools
+    let security = Arc::new(SecurityPolicy::from_config(
+        &config.autonomy,
+        &workspace_dir,
+    ));
+
+    // Create runtime adapter for tools that need it
+    let runtime_adapter: Arc<dyn runtime::RuntimeAdapter> =
+        Arc::from(runtime::create_runtime(&config.runtime)?);
+
+    // Get composio config if enabled
+    let (composio_key, composio_entity_id) = if config.composio.enabled {
+        (
+            config.composio.api_key.as_deref(),
+            Some(config.composio.entity_id.as_str()),
+        )
+    } else {
+        (None, None)
+    };
+
+    // Create all tools with proper dependencies
+    let tools = crate::tools::all_tools_with_runtime(
+        Arc::new(config.clone()),
+        &security,
+        Arc::clone(&runtime_adapter),
+        Arc::clone(&state.mem),
+        composio_key,
+        composio_entity_id,
+        &config.browser,
+        &config.http_request,
+        &workspace_dir,
+        &config.agents,
+        config.api_key.as_deref(),
+        &config,
+    );
+
+    // Create provider with routing support
+    let provider_runtime_options = providers::ProviderRuntimeOptions {
+        auth_profile_override: None,
+        zeroclaw_dir: config.config_path.parent().map(std::path::PathBuf::from),
+        secrets_encrypt: config.secrets.encrypt,
+        reasoning_enabled: config.runtime.reasoning_enabled,
+    };
+
+    let provider: Box<dyn providers::Provider> = providers::create_routed_provider_with_options(
+        provider_label,
+        config.api_key.as_deref(),
+        config.api_url.as_deref(),
+        &config.reliability,
+        &config.model_routes,
+        model_label,
+        &provider_runtime_options,
+    )?;
+
+    drop(config);
+
+    Agent::builder()
+        .provider(provider)
+        .tools(tools)  // Now we pass actual tools!
+        .memory(Arc::clone(&state.mem))
+        .observer(Arc::clone(&state.observer))
+        .prompt_builder(SystemPromptBuilder::with_defaults())
+        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .memory_loader(Box::new(DefaultMemoryLoader::default()))
+        .model_name(model_label.to_string())
+        .temperature(state.temperature)
+        .workspace_dir(workspace_dir)
+        .identity_config(identity_config)
+        .build()
+        .map_err(|e| anyhow::anyhow!("Failed to build agent: {e}"))
+}
+
 /// Webhook request body
 #[derive(serde::Deserialize)]
 pub struct WebhookBody {
@@ -833,7 +924,19 @@ async fn handle_webhook(
             messages_count: 1,
         });
 
-    match run_gateway_chat_with_multimodal(&state, &provider_label, message).await {
+    // Build agent with tool support for this request
+    let mut agent = match build_agent_from_state(&state, &provider_label, &model_label) {
+        Ok(a) => a,
+        Err(e) => {
+            let sanitized = providers::sanitize_api_error(&e.to_string());
+            tracing::error!("Failed to build agent: {}", sanitized);
+            let err = serde_json::json!({"error": format!("Failed to initialize agent: {}", sanitized)});
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(err));
+        }
+    };
+
+    // Use agent's run_single which properly handles tool execution
+    match agent.run_single(message).await {
         Ok(response) => {
             let duration = started_at.elapsed();
             state
