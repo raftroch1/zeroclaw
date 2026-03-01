@@ -590,6 +590,220 @@ fn parse_glm_style_tool_calls(text: &str) -> Vec<(String, serde_json::Value, Opt
     calls
 }
 
+/// Known tool names that can appear as XML tags (e.g., `<shell>...</shell>`).
+/// This list is used to parse tool-specific XML tags as a fallback when
+/// the model outputs the tool name as the tag instead of using `<tool_call>`.
+const KNOWN_TOOL_NAMES: &[&str] = &[
+    "shell",
+    "file_read",
+    "file_write",
+    "memory_store",
+    "memory_recall",
+    "memory_forget",
+    "browser_open",
+    "browser",
+    "http_request",
+    "web_search",
+    "screenshot",
+    "image_info",
+    "schedule",
+    "cron_add",
+    "cron_list",
+    "cron_remove",
+    "cron_update",
+    "cron_run",
+    "cron_runs",
+    "composio",
+    "delegate",
+    "git_operations",
+    "pushover",
+    "proxy_config",
+    "hardware_board_info",
+    "hardware_memory_map",
+    "hardware_memory_read",
+];
+
+/// Parse tool-specific XML tags from response text.
+/// 
+/// Some models output the tool name directly as an XML tag instead of using
+/// the generic `<tool_call>` tag. For example:
+/// ```text
+/// <shell>{"command": "ls -la"}</shell>
+/// ```
+/// or:
+/// ```text
+/// <shell command="ls -la"/>
+/// ```
+/// or:
+/// ```text
+/// <file_read>{"path": "/etc/hosts"}</file_read>
+/// ```
+/// 
+/// This function extracts tool calls from such formats.
+fn parse_tool_specific_xml_tags(text: &str) -> Vec<(String, serde_json::Value, String)> {
+    let mut calls = Vec::new();
+    
+    for tool_name in KNOWN_TOOL_NAMES {
+        let open_tag = format!("<{}", tool_name);
+        let close_tag = format!("</{}>", tool_name);
+        
+        let mut search_from = 0;
+        while let Some(start) = text[search_from..].find(&open_tag) {
+            let abs_start = search_from + start;
+            
+            // Find the end of the opening tag (could be `>` or `/>`)
+            let after_tag_name = abs_start + open_tag.len();
+            let rest = &text[after_tag_name..];
+            
+            // Check for self-closing tag with attributes: <shell command="ls"/>
+            if let Some(self_close_pos) = rest.find("/>") {
+                let attr_content = &rest[..self_close_pos];
+                // Check if there's no nested content (no `>` before `/>`)
+                if !attr_content.contains('>') {
+                    if let Some(args) = parse_xml_attributes(attr_content, tool_name) {
+                        let raw = text[abs_start..after_tag_name + self_close_pos + 2].to_string();
+                        calls.push((tool_name.to_string(), args, raw));
+                        search_from = after_tag_name + self_close_pos + 2;
+                        continue;
+                    }
+                }
+            }
+            
+            // Look for `>` to find end of opening tag
+            let Some(tag_end_rel) = rest.find('>') else {
+                search_from = after_tag_name;
+                continue;
+            };
+            
+            let tag_end = after_tag_name + tag_end_rel + 1;
+            
+            // Now look for the closing tag
+            if let Some(close_pos) = text[tag_end..].find(&close_tag) {
+                let inner = &text[tag_end..tag_end + close_pos];
+                let raw = text[abs_start..tag_end + close_pos + close_tag.len()].to_string();
+                
+                // Try to parse inner content as JSON
+                let trimmed = inner.trim();
+                if let Ok(json_args) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                    // If it's a direct arguments object (not wrapped in {name, arguments})
+                    if json_args.is_object() && !json_args.get("name").is_some() {
+                        calls.push((tool_name.to_string(), json_args, raw));
+                    } else if let Some(args) = json_args.get("arguments") {
+                        // Wrapped format: {"name": "...", "arguments": {...}}
+                        calls.push((tool_name.to_string(), args.clone(), raw));
+                    } else {
+                        calls.push((tool_name.to_string(), json_args, raw));
+                    }
+                    search_from = tag_end + close_pos + close_tag.len();
+                    continue;
+                }
+                
+                // Try to parse as key=value pairs or simple command
+                if let Some(args) = parse_simple_tool_args(trimmed, tool_name) {
+                    calls.push((tool_name.to_string(), args, raw));
+                    search_from = tag_end + close_pos + close_tag.len();
+                    continue;
+                }
+            }
+            
+            search_from = after_tag_name;
+        }
+    }
+    
+    calls
+}
+
+/// Parse XML-style attributes from a tag (e.g., `command="ls -la"` from `<shell command="ls -la"/>`).
+fn parse_xml_attributes(attr_content: &str, tool_name: &str) -> Option<serde_json::Value> {
+    let mut args = serde_json::Map::new();
+    
+    // Simple regex-like parsing for key="value" or key='value' pairs
+    let mut remaining = attr_content.trim();
+    while !remaining.is_empty() {
+        remaining = remaining.trim_start();
+        if remaining.is_empty() {
+            break;
+        }
+        
+        // Find key
+        let key_end = remaining.find(|c: char| c == '=' || c.is_whitespace())?;
+        let key = remaining[..key_end].trim();
+        if key.is_empty() {
+            break;
+        }
+        
+        remaining = remaining[key_end..].trim_start();
+        if !remaining.starts_with('=') {
+            break;
+        }
+        remaining = remaining[1..].trim_start();
+        
+        // Find value (quoted or unquoted)
+        let (value, consumed) = if remaining.starts_with('"') {
+            let end = remaining[1..].find('"')?;
+            (&remaining[1..1 + end], 2 + end)
+        } else if remaining.starts_with('\'') {
+            let end = remaining[1..].find('\'')?;
+            (&remaining[1..1 + end], 2 + end)
+        } else {
+            let end = remaining.find(char::is_whitespace).unwrap_or(remaining.len());
+            (&remaining[..end], end)
+        };
+        
+        args.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+        remaining = &remaining[consumed..];
+    }
+    
+    if args.is_empty() {
+        return None;
+    }
+    
+    Some(serde_json::Value::Object(args))
+}
+
+/// Parse simple tool arguments from non-JSON content.
+fn parse_simple_tool_args(content: &str, tool_name: &str) -> Option<serde_json::Value> {
+    let content = content.trim();
+    if content.is_empty() {
+        return None;
+    }
+    
+    // For shell, treat the content as the command
+    if tool_name == "shell" {
+        return Some(serde_json::json!({"command": content}));
+    }
+    
+    // For file_read/file_write, treat content as path
+    if tool_name == "file_read" || tool_name == "file_write" {
+        return Some(serde_json::json!({"path": content}));
+    }
+    
+    // For memory tools
+    if tool_name == "memory_recall" {
+        return Some(serde_json::json!({"query": content}));
+    }
+    if tool_name == "memory_store" {
+        // Can't determine key/value from simple content
+        return None;
+    }
+    if tool_name == "memory_forget" {
+        return Some(serde_json::json!({"key": content}));
+    }
+    
+    // For browser_open, treat content as URL
+    if tool_name == "browser_open" || tool_name == "browser" {
+        return Some(serde_json::json!({"url": content}));
+    }
+    
+    // For web_search, treat content as query
+    if tool_name == "web_search" {
+        return Some(serde_json::json!({"query": content}));
+    }
+    
+    // Generic fallback - return as a single "input" field
+    Some(serde_json::json!({"input": content}))
+}
+
 // ── Tool-Call Parsing ─────────────────────────────────────────────────────
 // LLM responses may contain tool calls in multiple formats depending on
 // the provider. Parsing follows a priority chain:
@@ -597,9 +811,11 @@ fn parse_glm_style_tool_calls(text: &str) -> Vec<(String, serde_json::Value, Opt
 //   2. XML tags: <tool_call>, <toolcall>, <tool-call>, <invoke>
 //   3. Markdown code blocks with `tool_call` language
 //   4. GLM-style line-based format (e.g. `shell/command>ls`)
+//   5. Tool-specific XML tags (e.g. `<shell>...</shell>`, `<file_read>...</file_read>`)
 // SECURITY: We never fall back to extracting arbitrary JSON from the
 // response body, because that would enable prompt-injection attacks where
 // malicious content in emails/files/web pages mimics a tool call.
+// Tool-specific tags are only accepted for known tool names in KNOWN_TOOL_NAMES.
 
 /// Parse tool calls from an LLM response that uses XML-style function calling.
 ///
@@ -751,6 +967,27 @@ fn parse_tool_calls(response: &str) -> (String, Vec<ParsedToolCall>) {
         }
     }
 
+    // Tool-specific XML tags (e.g., <shell>...</shell>, <file_read>...</file_read>)
+    // Some models output the tool name as the XML tag instead of using <tool_call>.
+    // This is a common format that should be supported as a fallback.
+    if calls.is_empty() {
+        let tool_specific_calls = parse_tool_specific_xml_tags(remaining);
+        if !tool_specific_calls.is_empty() {
+            let mut cleaned_text = remaining.to_string();
+            for (name, args, raw) in &tool_specific_calls {
+                calls.push(ParsedToolCall {
+                    name: name.clone(),
+                    arguments: args.clone(),
+                });
+                cleaned_text = cleaned_text.replace(&raw, "");
+            }
+            if !cleaned_text.trim().is_empty() {
+                text_parts.push(cleaned_text.trim().to_string());
+            }
+            remaining = "";
+        }
+    }
+
     // SECURITY: We do NOT fall back to extracting arbitrary JSON from the response
     // here. That would enable prompt injection attacks where malicious content
     // (e.g., in emails, files, or web pages) could include JSON that mimics a
@@ -759,6 +996,7 @@ fn parse_tool_calls(response: &str) -> (String, Vec<ParsedToolCall>) {
     // 2. ZeroClaw tool-call tags (<tool_call>, <toolcall>, <tool-call>)
     // 3. Markdown code blocks with tool_call/toolcall/tool-call language
     // 4. Explicit GLM line-based call formats (e.g. `shell/command>...`)
+    // 5. Tool-specific XML tags for known tools (e.g. `<shell>...</shell>`)
     // This ensures only the LLM's intentional tool calls are executed.
 
     // Remaining text after last tool call
