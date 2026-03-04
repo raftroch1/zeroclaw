@@ -1,0 +1,42 @@
+# ZeroClaw Configuration
+# This file configures the ZeroClaw agent runtime
+
+[agent]
+# Maximum tool-call loop turns per user message
+# Set to very high value for local/Ollama models (no API costs)
+# 999 should be effectively unlimited for practical purposes
+max_tool_iterations = 999
+
+# Maximum conversation history messages retained per session
+# Increased for local models - more context without API costs
+max_history_messages = 500
+
+# Enable parallel tool execution within a single iteration
+parallel_tools = false
+
+# Tool dispatch strategy: "auto" | "sequential" | "batch"
+tool_dispatcher = "auto"
+
+# Compact context mode for smaller models (13B or smaller)
+# When true: bootstrap_max_chars=6000, rag_chunk_limit=2
+compact_context = false
+
+[server]
+# Gateway server configuration
+gateway_port = 3000
+gateway_host = "127.0.0.1"
+allow_public_bind = false
+
+[memory]
+# Memory backend configuration
+provider = "sqlite"
+# db_url = "postgres://localhost/zeroclaw"  # Uncomment for PostgreSQL
+
+[security]
+# Security policy configuration
+pairing_mode = true
+secrets_encrypt = false
+
+[rate_limit]
+# Rate limiting configuration
+requests_per_minute = 60
