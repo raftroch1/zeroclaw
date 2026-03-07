@@ -1358,7 +1358,12 @@ pub fn build_runtime_proxy_client_with_timeouts(
 
     let builder = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(timeout_secs))
-        .connect_timeout(std::time::Duration::from_secs(connect_timeout_secs));
+        .connect_timeout(std::time::Duration::from_secs(connect_timeout_secs))
+        .pool_max_idle_per_host(2)  // Keep up to 2 idle connections per host
+        .pool_idle_timeout(std::time::Duration::from_secs(75))  // Close idle conns after 75s
+        .http2_keep_alive_interval(std::time::Duration::from_secs(30))  // Keep-alive checks
+        .http2_keep_alive_timeout(std::time::Duration::from_secs(20))  // Keep-alive timeout
+        .http2_keep_alive_while_idle(true);  // Maintain keep-alive during idle
     let builder = apply_runtime_proxy_to_builder(builder, service_key);
     let client = builder.build().unwrap_or_else(|error| {
         tracing::warn!(
