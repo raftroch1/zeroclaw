@@ -187,6 +187,13 @@ fn strip_tool_call_tags(message: &str) -> String {
             _ => None,
         }
     }
+/// Check if content is a JSON tool_call response that should not be displayed to users.
+/// These are internal protocol messages and should be filtered out before sending to channels.
+fn is_tool_call_json(content: &str) -> bool {
+    let trimmed = content.trim();
+    trimmed.starts_with(r#"{"content":"#) || trimmed.starts_with(r#"{"content":""#)
+}
+
 
     fn extract_first_json_end(input: &str) -> Option<usize> {
         let trimmed = input.trim_start();
@@ -1756,6 +1763,7 @@ impl Channel for TelegramChannel {
         // Strip tool_call tags before processing to prevent Markdown parsing failures
         let content = strip_tool_call_tags(&message.content);
 
+        // Don'\''t send tool_call JSON to the channel - these are internal protocol messages
         // Parse recipient: "chat_id" or "chat_id:thread_id" format
         let (chat_id, thread_id) = match message.recipient.split_once(':') {
             Some((chat, thread)) => (chat, Some(thread)),
