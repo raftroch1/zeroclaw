@@ -2554,6 +2554,10 @@ pub struct SecurityConfig {
     /// Audit logging configuration
     #[serde(default)]
     pub audit: AuditConfig,
+
+    /// Allowed commands for shell execution (overrides SecurityPolicy defaults)
+    #[serde(default)]
+    pub allowed_commands: Option<Vec<String>>,
 }
 
 /// Sandbox configuration for OS-level isolation
