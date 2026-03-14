@@ -37,6 +37,21 @@ provider = "sqlite"
 pairing_mode = true
 secrets_encrypt = false
 
+[autonomy]
+# Autonomy and security policy configuration
+level = "supervised"
+workspace_only = true
+# Allowlist of executable names permitted for shell execution
+allowed_commands = ["node", "npm", "echo", "ls", "git", "cat", "pwd", "which"]
+# Maximum actions allowed per hour
+max_actions_per_hour = 100
+# Maximum cost per day in cents (for API providers)
+max_cost_per_day_cents = 1000
+# Require explicit approval for medium-risk commands
+require_approval_for_medium_risk = true
+# Block high-risk commands even if allowlisted
+block_high_risk_commands = true
+
 [rate_limit]
 # Rate limiting configuration
 requests_per_minute = 60
