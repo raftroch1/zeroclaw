@@ -146,17 +146,36 @@ impl Tool for FileWriteTool {
             });
         }
 
-        match tokio::fs::write(&resolved_target, content).await {
-            Ok(()) => Ok(ToolResult {
-                success: true,
-                output: format!("Written {} bytes to {path}", content.len()),
-                error: None,
-            }),
-            Err(e) => Ok(ToolResult {
-                success: false,
-                output: String::new(),
-                error: Some(format!("Failed to write file: {e}")),
-            }),
+        // Debug logging to track the write operation
+        tracing::debug!("file_write: attempting to write {} bytes to {}", content.len(), resolved_target.display());
+
+        match std::fs::write(&resolved_target, content) {
+            Ok(()) => {
+                // Verify file was actually created
+                if resolved_target.exists() {
+                    tracing::debug!("file_write: successfully created file at {}", resolved_target.display());
+                    Ok(ToolResult {
+                        success: true,
+                        output: format!("Written {} bytes to {}", content.len(), path),
+                        error: None,
+                    })
+                } else {
+                    tracing::error!("file_write: write returned Ok but file doesn't exist at {}", resolved_target.display());
+                    Ok(ToolResult {
+                        success: false,
+                        output: String::new(),
+                        error: Some(format!("Write appeared to succeed but file was not created at {}", resolved_target.display())),
+                    })
+                }
+            }
+            Err(e) => {
+                tracing::error!("file_write: failed to write to {}: {}", resolved_target.display(), e);
+                Ok(ToolResult {
+                    success: false,
+                    output: String::new(),
+                    error: Some(format!("Failed to write file: {e}")),
+                })
+            }
         }
     }
 }
