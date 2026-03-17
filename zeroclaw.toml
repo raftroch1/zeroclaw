@@ -21,6 +21,10 @@ tool_dispatcher = "auto"
 # When true: bootstrap_max_chars=6000, rag_chunk_limit=2
 compact_context = false
 
+# Default provider and model configuration
+default_provider = "zai"
+default_model = "glm-5"
+
 [server]
 # Gateway server configuration
 gateway_port = 3000
