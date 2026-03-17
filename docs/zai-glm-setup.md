@@ -9,8 +9,13 @@ ZeroClaw supports these Z.AI aliases and endpoints out of the box:
 
 | Alias | Endpoint | Notes |
 |-------|----------|-------|
-| `zai` | `https://api.z.ai/api/coding/paas/v4` | Global endpoint |
-| `zai-cn` | `https://open.bigmodel.cn/api/paas/v4` | China endpoint |
+| `zai` | `https://api.z.ai/api/coding/paas/v4` | Global coding endpoint |
+| `zai-cn` | `https://open.bigmodel.cn/api/coding/paas/v4` | China coding endpoint |
+| `glm` | `https://api.z.ai/api/paas/v4` | Standard GLM endpoint |
+| `glm-cn` | `https://open.bigmodel.cn/api/paas/v4` | Standard China endpoint |
+
+> **Note:** The `zai` aliases route to Z.AI's **coding** endpoint, while `glm` aliases
+> route to the standard endpoint. Both support OpenAI-compatible tool calling.
 
 If you need a custom base URL, see `docs/custom-providers.md`.
 
@@ -37,14 +42,70 @@ default_temperature = 0.7
 
 ## Available Models
 
-| Model | Description |
-|-------|-------------|
-| `glm-5` | Default in onboarding; strongest reasoning |
-| `glm-4.7` | Strong general-purpose quality |
-| `glm-4.6` | Balanced baseline |
-| `glm-4.5-air` | Lower-latency option |
+| Model | Description | Context | Best For |
+|-------|-------------|---------|----------|
+| `glm-5` | Flagship reasoning model | 200K | Complex agentic tasks, systems engineering |
+| `glm-5-turbo` | Optimized for agent workflows | 200K (128K output) | Tool-heavy agent tasks, lower latency |
+| `glm-4.7` | Strong general-purpose quality | — | Balanced quality/speed |
+| `glm-4.6` | Balanced baseline | — | General use |
+| `glm-4.5-air` | Lower-latency option | — | Quick responses, high throughput |
+
+> **Recommendation:** Use `glm-5` for maximum reasoning capability, or `glm-5-turbo`
+> for agent-heavy workflows that involve frequent tool calls (lower latency, optimized
+> for function calling).
 
 Model availability can vary by account/region, so use the `/models` API when in doubt.
+
+## Tool Calling / Function Calling
+
+GLM-5 supports **native OpenAI-format tool calling**. ZeroClaw automatically sends tools
+in the standard format:
+
+```json
+{
+  "tools": [{
+    "type": "function",
+    "function": {
+      "name": "shell",
+      "description": "Execute a shell command",
+      "parameters": { "type": "object", "properties": { "command": { "type": "string" } }, "required": ["command"] }
+    }
+  }],
+  "tool_choice": "auto"
+}
+```
+
+GLM-5 responds with `tool_calls` in the assistant message:
+
+```json
+{
+  "choices": [{
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "id": "call_abc123",
+        "type": "function",
+        "function": {
+          "name": "shell",
+          "arguments": "{\"command\": \"date\"}"
+        }
+      }]
+    }
+  }]
+}
+```
+
+If an endpoint does not support the `tools` parameter, ZeroClaw automatically falls back
+to **prompt-guided tool calling** using `<tool_call>` XML tags.
+
+### Troubleshooting Tool Calls
+
+If tools aren't working:
+
+1. **Enable debug logging:** `RUST_LOG=zeroclaw=debug` to see tool call parsing details
+2. **Check the endpoint:** `zai` uses the coding endpoint; try `glm` for the standard endpoint
+3. **Verify model supports tools:** `glm-5` and `glm-5-turbo` support function calling
+4. **Check API response:** Tools require the model to return `tool_calls` in the response
 
 ## Verify Setup
 
@@ -61,16 +122,25 @@ curl -X POST "https://api.z.ai/api/coding/paas/v4/chat/completions" \
   }'
 ```
 
-Expected response:
-```json
-{
-  "choices": [{
-    "message": {
-      "content": "Hello! How can I help you today?",
-      "role": "assistant"
-    }
-  }]
-}
+### Test tool calling with curl
+
+```bash
+curl -X POST "https://api.z.ai/api/coding/paas/v4/chat/completions" \
+  -H "Authorization: Bearer YOUR_ZAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "glm-5",
+    "messages": [{"role": "user", "content": "What is the current date?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "shell",
+        "description": "Run a shell command",
+        "parameters": {"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}
+      }
+    }],
+    "tool_choice": "auto"
+  }'
 ```
 
 ### Test with ZeroClaw CLI

@@ -899,9 +899,17 @@ impl OpenAiCompatibleProvider {
 
     fn parse_native_response(message: ResponseMessage) -> ProviderChatResponse {
         let text = message.effective_content_optional();
-        let tool_calls = message
-            .tool_calls
-            .unwrap_or_default()
+        let raw_tool_calls = message.tool_calls.unwrap_or_default();
+
+        if !raw_tool_calls.is_empty() {
+            tracing::debug!(
+                count = raw_tool_calls.len(),
+                "Parsing {} native tool call(s) from provider response",
+                raw_tool_calls.len()
+            );
+        }
+
+        let tool_calls = raw_tool_calls
             .into_iter()
             .filter_map(|tc| {
                 let name = tc.function_name()?;
@@ -1357,6 +1365,11 @@ impl Provider for OpenAiCompatibleProvider {
             let sanitized = super::sanitize_api_error(&error);
 
             if Self::is_native_tool_schema_unsupported(status, &sanitized) {
+                tracing::info!(
+                    provider = %self.name,
+                    "Native tool schema unsupported ({}); falling back to prompt-guided tool instructions",
+                    status
+                );
                 let fallback_messages =
                     Self::with_prompt_guided_tool_instructions(request.messages, request.tools);
                 let text = self

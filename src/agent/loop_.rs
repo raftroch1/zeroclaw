@@ -1272,10 +1272,27 @@ pub(crate) async fn run_tool_call_loop(
                     let mut calls = parse_structured_tool_calls(&resp.tool_calls);
                     let mut parsed_text = String::new();
 
+                    if !calls.is_empty() {
+                        tracing::debug!(
+                            provider = provider_name,
+                            count = calls.len(),
+                            "Parsed {} native tool call(s)",
+                            calls.len()
+                        );
+                    }
+
                     if calls.is_empty() {
                         let (fallback_text, fallback_calls) = parse_tool_calls(&response_text);
                         if !fallback_text.is_empty() {
                             parsed_text = fallback_text;
+                        }
+                        if !fallback_calls.is_empty() {
+                            tracing::debug!(
+                                provider = provider_name,
+                                count = fallback_calls.len(),
+                                "Parsed {} text-based tool call(s) via fallback parsing",
+                                fallback_calls.len()
+                            );
                         }
                         calls = fallback_calls;
                     }
