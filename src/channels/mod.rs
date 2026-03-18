@@ -1535,6 +1535,14 @@ async fn process_channel_message(
             let delivered_response = if sanitized_response.is_empty() && !response.trim().is_empty()
             {
                 "I encountered malformed tool-call output and could not produce a safe reply. Please try again.".to_string()
+            } else if sanitized_response.trim().is_empty() {
+                tracing::warn!(
+                    channel = %msg.channel,
+                    response_len = response.len(),
+                    sanitized_len = sanitized_response.len(),
+                    "Empty response after sanitization; sending fallback acknowledgement"
+                );
+                "I processed your request but wasn't able to generate a visible response. Please try again.".to_string()
             } else {
                 sanitized_response
             };

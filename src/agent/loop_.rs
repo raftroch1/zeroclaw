@@ -1196,6 +1196,11 @@ pub(crate) async fn run_tool_call_loop(
         tools_registry.iter().map(|tool| tool.spec()).collect();
     let use_native_tools = provider.supports_native_tools() && !tool_specs.is_empty();
 
+    // Track the last tool results so we can construct a fallback response if the
+    // LLM returns empty content after tool execution (common with GLM-5 and
+    // similar models that sometimes return null content after processing tool results).
+    let mut last_tool_results: Option<String> = None;
+
     for _iteration in 0..max_iterations {
         if cancellation_token
             .as_ref()
@@ -1334,13 +1339,32 @@ pub(crate) async fn run_tool_call_loop(
 
         if tool_calls.is_empty() {
             // No tool calls — this is the final response.
+            //
+            // Fallback: if the LLM returned empty content but tools were executed
+            // in a previous iteration, use the tool results as the response body.
+            // This prevents the common GLM-5 (and similar model) issue where the
+            // model returns null/empty content after processing tool results.
+            let final_text = if display_text.trim().is_empty() {
+                if let Some(ref results) = last_tool_results {
+                    tracing::warn!(
+                        provider = provider_name,
+                        "LLM returned empty content after tool execution; using tool results as fallback response"
+                    );
+                    results.clone()
+                } else {
+                    display_text
+                }
+            } else {
+                display_text
+            };
+
             // If a streaming sender is provided, relay the text in small chunks
             // so the channel can progressively update the draft message.
             if let Some(ref tx) = on_delta {
                 // Split on whitespace boundaries, accumulating chunks of at least
                 // STREAM_CHUNK_MIN_CHARS characters for progressive draft updates.
                 let mut chunk = String::new();
-                for word in display_text.split_inclusive(char::is_whitespace) {
+                for word in final_text.split_inclusive(char::is_whitespace) {
                     if cancellation_token
                         .as_ref()
                         .is_some_and(CancellationToken::is_cancelled)
@@ -1359,7 +1383,7 @@ pub(crate) async fn run_tool_call_loop(
                 }
             }
             history.push(ChatMessage::assistant(response_text.clone()));
-            return Ok(display_text);
+            return Ok(final_text);
         }
 
         // Print any text the LLM produced alongside tool calls (unless silent)
@@ -1402,6 +1426,9 @@ pub(crate) async fn run_tool_call_loop(
                 call.name, result
             );
         }
+
+        // Remember tool results for the empty-response fallback.
+        last_tool_results = Some(tool_results.clone());
 
         // Add assistant message with tool calls + tool results to history.
         // Native mode: use JSON-structured messages so convert_messages() can
