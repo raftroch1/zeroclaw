@@ -1,0 +1,284 @@
+# ZeroClaw Agent Configuration
+# Generated for Telegram + z.ai MCP integration
+#
+# IMPORTANT: Replace YOUR_ZAI_API_KEY with your actual z.ai API key
+# Your Telegram bot token and user ID are already configured below
+
+# ─────────────────────────────────────────────────────────────
+# Provider Configuration (z.ai / GLM)
+# ─────────────────────────────────────────────────────────────
+
+# Use z.ai as the default provider (Coding Plan endpoint for Pro subscription)
+# "zai" uses the Coding Plan endpoint (works with Pro subscription)
+# "glm" uses the Standard API endpoint (requires prepaid balance)
+default_provider = "zai"
+
+# Use GLM-4.7 model (flagship, 200K context, 128K output, excellent tool calling)
+# Available with all GLM Coding Plan tiers (Lite, Max, Pro)
+default_model = "glm-4.7"
+
+# Your z.ai API key
+api_key = "323ebd135f2149018d03fe9a92976a91.6LQJQLRy4prgMzLi"
+
+# GLM Coding Plan API endpoint (required for Coding Plan subscription)
+api_url = "https://api.z.ai/api/coding/paas/v4"
+
+# Set default temperature for responses (0.0-2.0)
+default_temperature = 0.7
+
+# ─────────────────────────────────────────────────────────────
+# Channels Configuration
+# ─────────────────────────────────────────────────────────────
+
+[channels_config]
+# Enable CLI interactive channel (false for Telegram-only operation)
+cli = false
+
+[channels_config.telegram]
+# Your actual BotFather bot token
+bot_token = "8694658163:AAGGqREUMKLWnsMvMrvLVJetLa3TpkhS5zA"
+
+# Allowed users - YOUR USER ID configured below
+# Empty list would deny all users
+# Using "*" would allow everyone (not recommended for production)
+allowed_users = ["521797087"]
+
+# Streaming mode options: "off" or "partial"
+# off = send complete response at once
+# partial = progressive updates via message edits
+stream_mode = "off"
+
+# Draft update interval in milliseconds (default 1000)
+# Reduces rate limit pressure when streaming
+draft_update_interval_ms = 1000
+
+# Interrupt on new message (default false)
+# When true, newer message from same sender cancels in-flight request
+interrupt_on_new_message = false
+
+# Mention-only mode (default false)
+# When true, only respond to @mentions in group chats
+# Direct messages are always processed
+mention_only = false
+
+# ─────────────────────────────────────────────────────────────
+# Autonomy & Tools Configuration
+# ─────────────────────────────────────────────────────────────
+
+[autonomy]
+# Autonomy level options: "readonly", "supervised", "full"
+level = "supervised"
+
+# Restrict all file/shell operations to workspace directory only
+workspace_only = true
+
+# Allowlist of shell commands (empty = no shell access)
+# These commands can be executed within the workspace
+allowed_commands = [
+    "ls",
+    "cat",
+    "grep",
+    "curl",
+    "echo",
+    "cd",
+    "pwd",
+    "find",
+    "head",
+    "tail",
+    "sed",
+    "awk",
+    "mkdir",
+    "rm",
+    "cp",
+    "mv",
+    "touch",
+    "wc",
+    "sort",
+    "uniq",
+    "git",
+    "cargo",
+    "rustc",
+    "sh",
+    "bash",
+    "python3",
+    "node",
+    "npm",
+    "pip",
+    "vi",
+    "vim",
+    "nano",
+    "chmod",
+    "chown",
+    "tar",
+    "gzip",
+    "gunzip",
+    "zip",
+    "unzip",
+    "df",
+    "du",
+    "free",
+    "top",
+    "ps",
+    "kill",
+    "pkill",
+    "pgrep",
+    "xargs",
+    "tee",
+    "less",
+    "more"
+]
+
+# Explicit path denylist (default already includes system dirs)
+# Add additional paths to block if needed
+forbidden_paths = []
+
+# Require approval for medium-risk commands (default true)
+require_approval_for_medium_risk = true
+
+# Block high-risk commands even if allowlisted (default true)
+block_high_risk_commands = true
+
+# Maximum actions allowed per hour (default 100)
+max_actions_per_hour = 100
+
+# Maximum cost per day in cents (default 1000)
+max_cost_per_day_cents = 1000
+
+# ─────────────────────────────────────────────────────────────
+# Memory Configuration
+# ─────────────────────────────────────────────────────────────
+
+[memory]
+# Backend options: "sqlite" (default), "postgres", "markdown", "none"
+backend = "sqlite"
+
+# Enable auto-save of conversations
+auto_save = true
+
+# Embedding provider: "none", "openai", "custom:https://..."
+embedding_provider = "none"
+
+# Vector search weight (0.0-1.0, default 0.7)
+vector_weight = 0.7
+
+# Keyword search weight (0.0-1.0, default 0.3)
+keyword_weight = 0.3
+
+# ─────────────────────────────────────────────────────────────
+# Web Search (z.ai MCP Integration)
+# ─────────────────────────────────────────────────────────────
+
+[web_search]
+# Enable web search tool via z.ai MCP
+enabled = true
+
+# Provider options: "duckduckgo" (free), "brave" (requires API key)
+# For full z.ai MCP integration, use "brave"
+provider = "brave"
+
+# Brave API key - Get from https://search.brave.com/search/api
+# Leave empty if using duckduckgo
+brave_api_key = ""
+
+# Max results per search (1-10)
+max_results = 5
+
+# Request timeout in seconds
+timeout_secs = 30
+
+# ─────────────────────────────────────────────────────────────
+# Security & Secrets Configuration
+# ─────────────────────────────────────────────────────────────
+
+[secrets]
+# Encrypt API keys at rest (recommended for security)
+encrypt = true
+
+# ─────────────────────────────────────────────────────────────
+# Observability Configuration
+# ─────────────────────────────────────────────────────────────
+
+[observability]
+# Backend options: "noop", "log", "multi"
+backend = "log"
+
+# Log level: "error", "warn", "info", "debug", "trace"
+level = "info"
+
+# ─────────────────────────────────────────────────────────────
+# Gateway Configuration (if you want to expose webhook API)
+# ─────────────────────────────────────────────────────────────
+
+[gateway]
+# Port for webhook server (default 3000)
+port = 3000
+
+# Host binding (default 127.0.0.1 for localhost only)
+host = "127.0.0.1"
+
+# Require pairing code on first connect (default true)
+require_pairing = true
+
+# Allow public bind without tunnel (default false)
+# For security, keep this false unless using a tunnel
+allow_public_bind = false
+
+# ─────────────────────────────────────────────────────────────
+# Heartbeat Configuration
+# ─────────────────────────────────────────────────────────────
+
+[heartbeat]
+# Enable periodic health checks
+enabled = false
+
+# Heartbeat interval in minutes (default 30)
+interval_minutes = 30
+
+# ─────────────────────────────────────────────────────────────
+# Runtime Configuration
+# ─────────────────────────────────────────────────────────────
+
+[runtime]
+# Runtime adapter: "native" or "docker"
+kind = "native"
+
+# ─────────────────────────────────────────────────────────────
+# Browser Configuration (optional, disabled by default)
+# ─────────────────────────────────────────────────────────────
+
+[browser]
+# Enable browser tools (default false)
+enabled = false
+
+# Allowed domains for browser access (empty = none)
+allowed_domains = []
+
+# Browser backend: "agent_browser", "rust_native", "computer_use", "auto"
+backend = "agent_browser"
+
+# ─────────────────────────────────────────────────────────────
+# Tunnel Configuration (if you need to expose gateway publicly)
+# ─────────────────────────────────────────────────────────────
+
+[tunnel]
+# Tunnel provider: "none", "cloudflare", "tailscale", "ngrok", "custom"
+provider = "none"
+
+# ─────────────────────────────────────────────────────────────
+# Identity Configuration
+# ─────────────────────────────────────────────────────────────
+
+[identity]
+# Identity format: "openclaw" (markdown files) or "aieos" (JSON)
+format = "openclaw"
+
+# AIEOS path (if using format = "aieos")
+# aieos_path = "identity.json"
+
+# Inline AIEOS JSON (alternative to file path)
+# aieos_inline = '''
+# {
+#   "identity": { ... },
+#   "psychology": { ... }
+# }
+# '''

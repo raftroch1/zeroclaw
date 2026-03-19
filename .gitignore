@@ -44,3 +44,7 @@ zeroclaw.png
 
 # User projects (work in progress)
 solana-megadashboard/
+
+# ZeroClaw agent configuration (user-specific, contains API keys)
+config.toml
+.zeroclaw/
