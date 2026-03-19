@@ -831,6 +831,9 @@ fn parse_simple_tool_args(content: &str, tool_name: &str) -> Option<serde_json::
 ///
 /// Also supports JSON with `tool_calls` array from OpenAI-format responses.
 fn parse_tool_calls(response: &str) -> (String, Vec<ParsedToolCall>) {
+    tracing::debug!("Parsing tool calls from response: {} chars", response.len());
+    tracing::debug!("Response preview: {}", &response.chars().take(200).collect::<String>());
+
     let mut text_parts = Vec::new();
     let mut calls = Vec::new();
     let mut remaining = response;
@@ -865,6 +868,7 @@ fn parse_tool_calls(response: &str) -> (String, Vec<ParsedToolCall>) {
         let after_open = &remaining[start + open_tag.len()..];
         if let Some(close_idx) = after_open.find(close_tag) {
             let inner = &after_open[..close_idx];
+            tracing::debug!("Found tool call tag '{}' with content: {}", open_tag, inner.trim());
             let mut parsed_any = false;
             let json_values = extract_json_values(inner);
             for value in json_values {
@@ -1246,6 +1250,10 @@ pub(crate) async fn run_tool_call_loop(
                             parsed_text = fallback_text;
                         }
                         calls = fallback_calls;
+                        tracing::debug!("Parsed tool calls from text: {} calls found", calls.len());
+                        for (i, call) in calls.iter().enumerate() {
+                            tracing::debug!("  Tool call {}: {}", i, call.name);
+                        }
                     }
 
                     // Preserve native tool call IDs in assistant history so role=tool
@@ -1439,7 +1447,7 @@ pub(crate) fn build_tool_instructions(tools_registry: &[Box<dyn Tool>]) -> Strin
     instructions.push_str("You may use multiple tool calls in a single response. ");
     instructions.push_str("After tool execution, results appear in <tool_result> tags. ");
     instructions
-        .push_str("Continue reasoning with the results until you can give a final answer.\n\n");
+        .push_str("IMPORTANT: After receiving tool results, you MUST stop calling tools and provide a final answer to the user.\n\n");
     instructions.push_str("### Available Tools\n\n");
 
     for tool in tools_registry {

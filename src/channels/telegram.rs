@@ -836,7 +836,14 @@ Allowlist Telegram username (without '@') or numeric user ID.",
         chat_id: &str,
         thread_id: Option<&str>,
     ) -> anyhow::Result<()> {
-        let chunks = split_message_for_telegram(message);
+        // Additional safety check to prevent sending empty messages
+        let message = message.trim();
+        if message.is_empty() {
+            tracing::debug!("Skipping empty message in send_text_chunks");
+            return Ok(());
+        }
+
+        let chunks = split_message_for_telegram(&message);
 
         for (index, chunk) in chunks.iter().enumerate() {
             let text = if chunks.len() > 1 {
@@ -1697,12 +1704,12 @@ impl Channel for TelegramChannel {
 
         // Skip sending empty messages or tool-only responses
         let content_to_send = content.trim();
-        if content_to_send.is_empty() || content_to_send.starts_with("<tool_call>") {
+        if content_to_send.is_empty() {
             tracing::debug!("Skipping empty or tool-only message");
             return Ok(());
         }
 
-        self.send_text_chunks(&content, chat_id, thread_id).await
+        self.send_text_chunks(&content_to_send, chat_id, thread_id).await
     }
 
     async fn listen(&self, tx: tokio::sync::mpsc::Sender<ChannelMessage>) -> anyhow::Result<()> {

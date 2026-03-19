@@ -234,6 +234,27 @@ Use Git worktrees to isolate concurrent agent/human tracks safely and predictabl
 - Name worktrees clearly by scope (for example: `wt/ci-hardening`, `wt/provider-fix`) and remove stale worktrees when no longer needed.
 - PR checkpoint rules from section 6.1 still apply to worktree-based development.
 
+Basic git worktree commands:
+
+```bash
+# Create a new worktree for a branch
+git worktree add ../wt-feature-name feature-name
+
+# List all worktrees
+git worktree list
+
+# Remove a worktree (after merging/abandoning)
+git worktree remove ../wt-feature-name
+
+# Prune stale worktree metadata
+git worktree prune
+```
+
+Worktree best practices:
+- Store worktrees in a dedicated directory (e.g., `../wt-*` pattern) for easy identification.
+- Remove worktrees after their branches are merged or abandoned to avoid accumulation.
+- Run `git worktree prune` periodically to clean up administrative metadata.
+
 ### 6.3 Code Naming Contract (Required)
 
 Apply these naming rules for all code changes unless a subsystem has a stronger existing pattern.
@@ -310,6 +331,34 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+Run a single test (for rapid iteration on specific functionality):
+
+```bash
+cargo test <test_name>
+
+# Example: run a specific test in a module
+cargo test providers::openai_provider::tests::test_chat
+
+# Run tests matching a pattern
+cargo test provider
+
+# Run tests with output
+cargo test -- --nocapture
+```
+
+Profile-specific builds (for different performance vs compile-time tradeoffs):
+
+```bash
+# Default release (optimized for size, works on all devices including Raspberry Pi)
+cargo build --release
+
+# Faster release build (parallel codegen, requires 16GB+ RAM)
+cargo build --profile release-fast
+
+# Dist build (maximum optimization, for production releases)
+cargo build --profile dist
+```
+
 Preferred local pre-PR validation path (recommended, not required):
 
 ```bash
@@ -320,6 +369,69 @@ Notes:
 
 - Local Docker-based CI is strongly recommended when Docker is available.
 - Contributors are not blocked from opening a PR if local Docker CI is unavailable; in that case run the most relevant native checks and document what was run.
+
+## 8.1 Pre-push Hook (Required)
+
+The repo includes a pre-push hook in `.githooks/` that enforces quality checks before every push. Enable it once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook runs by default:
+- `./scripts/ci/rust_quality_gate.sh` — formatter and correctness lint gate
+- `cargo test --locked` — full test suite
+
+Optional opt-in checks (set environment variable when pushing):
+
+```bash
+# Strict lint (full repo, all warnings)
+ZEROCLAW_STRICT_LINT=1 git push
+
+# Strict delta lint (changed Rust lines only)
+ZEROCLAW_STRICT_DELTA_LINT=1 git push
+
+# Docs quality gate (changed-line markdown)
+ZEROCLAW_DOCS_LINT=1 git push
+
+# Docs links gate (added-links only)
+ZEROCLAW_DOCS_LINKS=1 git push
+```
+
+To skip the hook during rapid iteration (not recommended for final PRs):
+
+```bash
+git push --no-verify
+```
+
+## 8.2 API Key Runtime Resolution Rules (Local Development)
+
+For local development and testing, API keys are resolved in this order:
+
+1. **Explicit key from config/CLI** — highest priority
+2. **Provider-specific environment variables**
+   - `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+   - `ZHIPU_API_KEY`, `DEEPSEEK_API_KEY`, `OLLAMA_API_KEY`
+   - See `.env.example` for current list
+3. **Generic environment variables**
+   - `ZEROCLAW_API_KEY` — fallback for any provider
+   - `API_KEY` — universal fallback
+
+Provider/model overrides (via environment):
+- `ZEROCLAW_PROVIDER` / `PROVIDER` — override default provider
+- `ZEROCLAW_MODEL` / `MODEL` — override default model
+
+Secret storage options for local development:
+
+1. **Environment variables** (recommended for temporary/testing)
+   - Copy `.env.example` to `.env` and fill in values
+   - `.env` is Git-ignored and should stay local
+
+2. **Config file with encryption** (for persistent setup)
+   - Stored at `~/.zeroclaw/config.toml`
+   - When `secrets.encrypt = true` (default), values are encrypted at rest
+   - Secret key stored at `~/.zeroclaw/.secret_key` with restricted permissions
+   - Use `zeroclaw onboard` for guided setup
 
 Additional expectations by change type:
 

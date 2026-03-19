@@ -125,6 +125,8 @@ impl ToolDispatcher for XmlToolDispatcher {
             );
         }
 
+        instructions.push_str("After tool execution, results appear in <tool_result> tags. ");
+        instructions.push_str("Continue reasoning with the results until you can give a final answer.\n\n");
         instructions
     }
 
