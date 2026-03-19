@@ -1695,6 +1695,13 @@ impl Channel for TelegramChannel {
             return Ok(());
         }
 
+        // Skip sending empty messages or tool-only responses
+        let content_to_send = content.trim();
+        if content_to_send.is_empty() || content_to_send.starts_with("<tool_call>") {
+            tracing::debug!("Skipping empty or tool-only message");
+            return Ok(());
+        }
+
         self.send_text_chunks(&content, chat_id, thread_id).await
     }
 
