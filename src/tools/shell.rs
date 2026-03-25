@@ -61,10 +61,32 @@ impl Tool for ShellTool {
             .get("command")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'command' parameter"))?;
+
+        // Check if command is in auto_approve list
+        let base_command = command
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+
+        // Extract just the executable name from paths (e.g., "C:\path\python.exe" -> "python.exe")
+        // Normalize Windows paths first, then extract the final component
+        let normalized_path = base_command.replace('\\', "/");
+        let exe_name = normalized_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&base_command);
+
+        let is_auto_approved = self
+            .security
+            .allowed_commands
+            .iter()
+            .any(|allowed| allowed.to_lowercase() == exe_name.to_lowercase() || allowed.to_lowercase() == base_command.to_lowercase());
+
         let approved = args
             .get("approved")
             .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .unwrap_or(is_auto_approved);
 
         if self.security.is_rate_limited() {
             return Ok(ToolResult {

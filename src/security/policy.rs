@@ -397,7 +397,9 @@ impl SecurityPolicy {
                 continue;
             };
 
-            let base = base_raw
+            // Handle both Unix (/) and Windows (\) path separators
+            let normalized = base_raw.replace('\\', "/");
+            let base = normalized
                 .rsplit('/')
                 .next()
                 .unwrap_or("")
@@ -428,7 +430,6 @@ impl SecurityPolicy {
                     | "iptables"
                     | "ufw"
                     | "firewall-cmd"
-                    | "curl"
                     | "wget"
                     | "nc"
                     | "ncat"
@@ -479,6 +480,8 @@ impl SecurityPolicy {
                         "add" | "remove" | "install" | "clean" | "publish"
                     )
                 }),
+                "curl" => true,  // Network requests - medium risk but useful for MCP tools
+                "python" | "python3" | "python.exe" | "python3.exe" => true,  // Code execution - medium risk
                 "touch" | "mkdir" | "mv" | "cp" | "ln" => true,
                 _ => false,
             };
@@ -598,7 +601,11 @@ impl SecurityPolicy {
 
             let mut words = cmd_part.split_whitespace();
             let base_raw = words.next().unwrap_or("");
-            let base_cmd = base_raw.rsplit('/').next().unwrap_or("");
+
+            // Handle both Unix (/) and Windows (\) path separators
+            // Replace backslashes with forward slashes for consistent parsing
+            let normalized = base_raw.replace('\\', "/");
+            let base_cmd = normalized.rsplit('/').next().unwrap_or("").to_ascii_lowercase();
 
             if base_cmd.is_empty() {
                 continue;
@@ -607,14 +614,14 @@ impl SecurityPolicy {
             if !self
                 .allowed_commands
                 .iter()
-                .any(|allowed| allowed == base_cmd)
+                .any(|allowed| allowed.to_ascii_lowercase() == base_cmd)
             {
                 return false;
             }
 
             // Validate arguments for the command
             let args: Vec<String> = words.map(|w| w.to_ascii_lowercase()).collect();
-            if !self.is_args_safe(base_cmd, &args) {
+            if !self.is_args_safe(&base_cmd, &args) {
                 return false;
             }
         }
