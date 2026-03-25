@@ -17,6 +17,9 @@
 
 pub mod browser;
 pub mod browser_open;
+pub mod context7_query;
+pub mod zai_web_search;
+pub mod zai_vision;
 pub mod composio;
 pub mod cron_add;
 pub mod cron_list;
@@ -57,6 +60,9 @@ pub use cron_run::CronRunTool;
 pub use cron_runs::CronRunsTool;
 pub use cron_update::CronUpdateTool;
 pub use delegate::DelegateTool;
+pub use context7_query::Context7QueryTool;
+pub use zai_web_search::ZaiWebSearchTool;
+pub use zai_vision::ZaiVisionTool;
 pub use file_read::FileReadTool;
 pub use file_write::FileWriteTool;
 pub use git_operations::GitOperationsTool;
@@ -195,6 +201,15 @@ pub fn all_tools_with_runtime(
     let mut tool_arcs: Vec<Arc<dyn Tool>> = vec![
         Arc::new(ShellTool::new(security.clone(), runtime)),
         Arc::new(FileReadTool::new(security.clone())),
+        Arc::new(Context7QueryTool::new(security.clone())),
+        Arc::new(ZaiWebSearchTool::new(
+            security.clone(),
+            root_config.api_key.clone().unwrap_or_default(),
+        )),
+        Arc::new(ZaiVisionTool::new(
+            security.clone(),
+            root_config.api_key.clone().unwrap_or_default(),
+        )),
         Arc::new(FileWriteTool::new(security.clone())),
         Arc::new(GlobSearchTool::new(security.clone())),
         Arc::new(CronAddTool::new(config.clone(), security.clone())),
