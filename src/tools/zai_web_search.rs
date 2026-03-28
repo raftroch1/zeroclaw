@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 const ZAI_WEB_SEARCH_API: &str = "https://api.z.ai/api/mcp/web_search_prime/mcp";
 
-/// Z.AI Web Search tool - searches the web and returns results
+/// Z.AI Web Search tool - searches the web using Z.AI's MCP web search API
 pub struct ZaiWebSearchTool {
     security: Arc<SecurityPolicy>,
     api_key: String,
@@ -25,7 +25,7 @@ impl Tool for ZaiWebSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search the web using Z.AI's web search API. Returns results including page titles, URLs, summaries, site names, and icons. Example: zai_web_search(query='latest AI technology developments')"
+        "Search the web using Z.AI's web search MCP API (search-prime engine). Returns LLM-optimized results including titles, URLs, summaries, site names, and icons. Example: zai_web_search(query='latest AI technology developments', max_results=5)"
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -38,8 +38,8 @@ impl Tool for ZaiWebSearchTool {
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "Maximum number of results (default: 5, max: 20)",
-                    "default": 5
+                    "description": "Maximum number of results (default: 10, max: 20)",
+                    "default": 10
                 }
             },
             "required": ["query"]
@@ -53,7 +53,7 @@ impl Tool for ZaiWebSearchTool {
 
         let max_results = args["max_results"]
             .as_u64()
-            .unwrap_or(5)
+            .unwrap_or(10)
             .min(20); // Cap at 20
 
         // Check rate limiting
@@ -65,8 +65,10 @@ impl Tool for ZaiWebSearchTool {
             });
         }
 
-        // Prepare MCP request
+        // Prepare MCP JSON-RPC request
         let mcp_payload = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
             "method": "tools/call",
             "params": {
                 "name": "webSearchPrime",
@@ -82,7 +84,6 @@ impl Tool for ZaiWebSearchTool {
         let response = client
             .post(ZAI_WEB_SEARCH_API)
             .header("Content-Type", "application/json")
-            .header("Accept", "application/json, text/event-stream")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&mcp_payload)
             .send()
@@ -90,57 +91,64 @@ impl Tool for ZaiWebSearchTool {
 
         match response {
             Ok(resp) => {
-                if resp.status().is_success() {
-                    if let Ok(result) = resp.json::<serde_json::Value>().await {
-                        // Extract search results from MCP response
-                        if let Some(content) = result.get("content") {
-                            if let Some(results_array) = content.as_array() {
-                                let mut output = format!("🔍 Web Search Results for '{}':\n\n", query);
+                let status = resp.status();
 
-                                for item in results_array {
-                                    if let Some(text) = item.get("text") {
-                                        output.push_str(&format!("{}\n", text));
+                // Try to parse JSON response
+                match resp.json::<serde_json::Value>().await {
+                    Ok(result) => {
+                        // Check for MCP error format
+                        if let Some(error) = result.get("error") {
+                            let error_msg = error.get("message")
+                                .and_then(|v| v.as_str())
+                                .or_else(|| error.get("msg").and_then(|v| v.as_str()))
+                                .unwrap_or("Unknown error");
+
+                            return Ok(ToolResult {
+                                success: false,
+                                output: format!("❌ Z.AI Web Search Error: {}", error_msg),
+                                error: Some(format!("Web search error: {}", error_msg)),
+                            });
+                        }
+
+                        // Extract content from MCP response
+                        if let Some(content) = result.get("result").and_then(|v| v.get("content")) {
+                            if let Some(content_array) = content.as_array() {
+                                for item in content_array {
+                                    if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
+                                        return Ok(ToolResult {
+                                            success: true,
+                                            output: text.to_string(),
+                                            error: None,
+                                        });
                                     }
                                 }
-
-                                return Ok(ToolResult {
-                                    success: true,
-                                    output,
-                                    error: None,
-                                });
                             }
                         }
 
                         // Fallback: return raw JSON
                         let output = format!("🔍 Web Search Results:\n\n{}", serde_json::to_string_pretty(&result).unwrap_or_else(|_| "Error formatting results".to_string()));
-                        return Ok(ToolResult {
+                        Ok(ToolResult {
                             success: true,
                             output,
                             error: None,
-                        });
+                        })
                     }
-                } else {
-                    let error_text = resp.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                    return Ok(ToolResult {
-                        success: false,
-                        output: format!("❌ Z.AI web search failed: {}", error_text),
-                        error: Some(error_text),
-                    });
+                    Err(e) => {
+                        Ok(ToolResult {
+                            success: false,
+                            output: format!("❌ Z.AI web search failed: Unable to parse response (status: {}). Error: {}", status, e),
+                            error: Some(format!("Failed to parse JSON response: {}", e)),
+                        })
+                    }
                 }
             }
             Err(e) => {
-                return Ok(ToolResult {
+                Ok(ToolResult {
                     success: false,
                     output: format!("❌ Network error: {}", e),
                     error: Some(e.to_string()),
                 })
             }
         }
-
-        Ok(ToolResult {
-            success: false,
-            output: "❌ Failed to parse search results".to_string(),
-            error: Some("Failed to parse search results".to_string()),
-        })
     }
 }
