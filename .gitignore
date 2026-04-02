@@ -29,3 +29,7 @@ venv/
 *.pem
 credentials.json
 .worktrees/
+
+# Docker config files (may contain API keys/tokens)
+docker-config/config.toml
+docker-config/daemon_state.json
