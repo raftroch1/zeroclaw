@@ -33,6 +33,7 @@ pub mod file_write;
 pub mod git_operations;
 pub mod glob_search;
 pub mod hardware_board_info;
+pub mod mem0_memory;
 pub mod hardware_memory_map;
 pub mod hardware_memory_read;
 pub mod http_request;
@@ -78,6 +79,7 @@ pub use image_info::ImageInfoTool;
 pub use memory_forget::MemoryForgetTool;
 pub use memory_recall::MemoryRecallTool;
 pub use memory_store::MemoryStoreTool;
+pub use mem0_memory::Mem0MemoryTool;
 pub use pdf_read::PdfReadTool;
 pub use proxy_config::ProxyConfigTool;
 pub use pushover::PushoverTool;
@@ -277,6 +279,26 @@ pub fn all_tools_with_runtime(
             root_config.web_search.max_results,
             root_config.web_search.timeout_secs,
         )));
+    }
+
+    // MCP server integrations
+    if root_config.mcp.enabled {
+        for server in &root_config.mcp.servers {
+            if server.enabled && server.transport == "http" {
+                match server.name.as_str() {
+                    "mem0-brain-surgeon" => {
+                        tool_arcs.push(Arc::new(Mem0MemoryTool::with_config(
+                            security.clone(),
+                            server.url.clone(),
+                            server.timeout_secs,
+                        )));
+                    }
+                    _ => {
+                        // Other MCP servers can be added here
+                    }
+                }
+            }
+        }
     }
 
     // PDF extraction (feature-gated at compile time via rag-pdf)
