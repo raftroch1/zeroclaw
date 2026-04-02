@@ -194,7 +194,7 @@ allowed_workspace_roots = []
 provider_retries = 3
 provider_backoff_ms = 500
 fallback_providers = []
-api_keys = ["google:AIzaSyBpQrTo5rHiUqpoehP0uofxbLgPzHLkjSk"]
+api_keys = []
 channel_initial_backoff_secs = 2
 channel_max_backoff_secs = 60
 scheduler_poll_secs = 15
@@ -237,7 +237,7 @@ cli = false
 message_timeout_secs = 300
 
 [channels_config.telegram]
-bot_token = "8694658163:AAGGqREUMKLWnsMvMrvLVJetLa3TpkhS5zA"
+bot_token = ""
 allowed_users = ["521797087"]
 stream_mode = "off"
 draft_update_interval_ms = 1000
@@ -279,7 +279,7 @@ port = 3000
 host = "127.0.0.1"
 require_pairing = true
 allow_public_bind = false
-paired_tokens = ["983df0dc616fa3e2d114c77283998a190d571288d12a8911797eafa2912331fc"]
+paired_tokens = []
 pair_rate_limit_per_minute = 10
 webhook_rate_limit_per_minute = 60
 trust_forwarded_headers = false
