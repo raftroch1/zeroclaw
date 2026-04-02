@@ -186,6 +186,10 @@ pub struct Config {
     /// Hardware configuration (wizard-driven physical world setup).
     #[serde(default)]
     pub hardware: HardwareConfig,
+
+    /// MCP (Model Context Protocol) server configuration (`[mcp]`).
+    #[serde(default)]
+    pub mcp: MCPConfig,
 }
 
 // ── Delegate Agents ──────────────────────────────────────────────
@@ -1495,6 +1499,84 @@ fn default_storage_schema() -> String {
 
 fn default_storage_table() -> String {
     "memories".into()
+}
+
+// ── MCP Configuration ───────────────────────────────────────────────────
+
+/// MCP (Model Context Protocol) server configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MCPServerConfig {
+    /// Unique name for this MCP server (e.g. "mem0-brain-surgeon")
+    pub name: String,
+
+    /// Transport type: "stdio" for local processes, "http" for remote servers
+    #[serde(default = "default_mcp_transport")]
+    pub transport: String,
+
+    /// HTTP URL for http transport (e.g. "http://host.docker.internal:3000")
+    #[serde(default)]
+    pub url: String,
+
+    /// Command to execute for stdio transport (e.g. "python", "node")
+    #[serde(default)]
+    pub command: String,
+
+    /// Arguments for stdio transport command
+    #[serde(default)]
+    pub args: Vec<String>,
+
+    /// Environment variables for stdio transport
+    #[serde(default)]
+    pub env: Option<HashMap<String, String>>,
+
+    /// Whether this server is enabled
+    #[serde(default = "default_mcp_enabled")]
+    pub enabled: bool,
+
+    /// Custom HTTP headers for http transport
+    #[serde(default)]
+    pub headers: Option<HashMap<String, String>>,
+
+    /// Request timeout in seconds (default: 30)
+    #[serde(default = "default_mcp_timeout")]
+    pub timeout_secs: u64,
+}
+
+/// MCP configuration section containing server definitions.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MCPConfig {
+    /// Whether MCP integration is enabled
+    #[serde(default = "default_mcp_section_enabled")]
+    pub enabled: bool,
+
+    /// List of MCP server configurations
+    #[serde(default)]
+    pub servers: Vec<MCPServerConfig>,
+}
+
+impl Default for MCPConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            servers: Vec::new(),
+        }
+    }
+}
+
+fn default_mcp_transport() -> String {
+    "stdio".into()
+}
+
+fn default_mcp_enabled() -> bool {
+    true
+}
+
+fn default_mcp_timeout() -> u64 {
+    30
+}
+
+fn default_mcp_section_enabled() -> bool {
+    false
 }
 
 impl Default for StorageProviderConfig {
@@ -2839,6 +2921,7 @@ impl Default for Config {
             agents: HashMap::new(),
             hardware: HardwareConfig::default(),
             query_classification: QueryClassificationConfig::default(),
+            mcp: MCPConfig::default(),
         }
     }
 }

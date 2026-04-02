@@ -392,6 +392,13 @@ url = "http://host.docker.internal:8002"
 enabled = true
 headers = {}
 
+[[mcp.servers]]
+name = "mem0-brain-surgeon"
+transport = "http"
+url = "http://host.docker.internal:3000"
+enabled = true
+timeout_secs = 30
+
 [agents]
 
 [hardware]
