@@ -472,3 +472,81 @@ When working in fast iterative mode:
 - Prefer deterministic behavior over clever shortcuts.
 - Do not “ship and hope” on security-sensitive paths.
 - If uncertain, leave a concrete TODO with verification context, not a hidden guess.
+
+## 13) Brain Surgeon Protocol (Extended Memory Layer)
+
+When working on Lana's core systems as the **Brain Surgeon**, you have access to persistent semantic memory via the **zeroclaw-brain-surgeon MCP server**.
+
+This is **Raf's toolkit** for maintaining Lana Sterling with deep, accumulated context across all Brain Surgeon sessions.
+
+### 🔒 Core Protocol (MANDATORY for Brain Surgeon Work)
+
+**Before ANY task on Lana's core:**
+
+1. **SEARCH MEMORY FIRST**
+   ```python
+   search_memories(query=”ZeroClaw [specific module/topic]”, limit=10)
+   ```
+
+2. **REVIEW this file** (CLAUDE.md) and **AGENTS.md** carefully
+
+3. **UNDERSTAND architectural principles** (sections 3.1-3.8 above)
+
+4. **MAKE small, reversible changes**
+
+5. **STORE what you learned**
+   ```python
+   add_memory(
+     content=”What you learned, what worked, what didn't”,
+     category=”lesson_learned”,
+     project=”zeroclaw-core”
+   )
+   ```
+
+### 🧠 Available Memory Tools
+
+- **`search_memories(query, limit)`** — Semantic search across 86+ memories
+- **`add_memory(content, category, project)`** — Store new learnings
+- **`get_recent_memories(limit)`** — Latest context
+- **`get_project_memories(project)`** — Project-specific memories
+- **`delete_memory(memory_id)`** — Remove memory (use caution)
+
+### 📚 Memory Categories
+
+- **project_context** — ZeroClaw architecture
+- **architecture_decision** — Technical decisions
+- **bug_fix** — Errors and fixes
+- **lesson_learned** — General insights
+- **task_status** — Current state
+- **user_preference** — Raf's preferences
+
+### ⚠️ Critical Reminders
+
+- **86+ memories available** — use them!
+- **High-risk areas**: src/security/**, src/runtime/**, src/gateway/**, src/tools/**
+- **Trait-driven**: Extend via traits, not cross-cutting rewrites
+- **Lana's autonomy depends on wise maintenance**
+
+### 🎯 Brain Surgeon Agent
+
+For detailed Brain Surgeon instructions and protocols, refer to:
+
+**File:** `C:\Users\rafae\Desktop\air\mem0\BRAIN_SURGEON_AGENT.md`
+
+This contains the complete Brain Surgeon workflow, tool reference, and best practices.
+
+### 💡 Quick Example
+
+```python
+# Starting work on security module
+search_memories(query=”ZeroClaw security principles and src/security architecture”, limit=10)
+
+# After implementing a fix
+add_memory(
+  content=”Fixed auth timeout issue in src/security/auth.rs. Solution: Increased timeout from 30s to 60s to handle slow network conditions.”,
+  category=”bug_fix”,
+  project=”zeroclaw-core”
+)
+```
+
+**Remember:** You have 86+ memories of accumulated context. SEARCH first, then work, then STORE what you learn.

@@ -1,0 +1,401 @@
+# API key provided via environment variable (API_KEY)
+api_key = ""
+default_provider = "anthropic-custom:https://api.z.ai/api/anthropic"
+default_model = "glm-5-turbo"
+default_temperature = 0.7
+
+# Route vision requests to Gemini 2.0 Flash for multimodal capabilities
+model_routes = [
+  { pattern = "^vision|^image|^analyze.*image", provider = "gemini", model = "gemini-2.0-flash-exp" },
+  # Route code generation to Z.AI
+  { pattern = "^code|^debug|^fix|^implement", provider = "anthropic-custom", model = "glm-5-turbo" },
+]
+
+embedding_routes = []
+
+[observability]
+backend = "log"
+
+[autonomy]
+level = "supervised"
+workspace_only = true
+allowed_commands = [
+    "ls",
+    "cat",
+    "grep",
+    "curl",
+    "echo",
+    "date",
+    "cd",
+    "pwd",
+    "git",
+    "github",
+    "gh",
+    "find",
+    "head",
+    "tail",
+    "sed",
+    "awk",
+    "mkdir",
+    "rm",
+    "cp",
+    "mv",
+    "touch",
+    "wc",
+    "sort",
+    "uniq",
+    "git",
+    "cargo",
+    "ssh",
+    "ssh-keygen",
+    "git_config",
+    "git_remote",
+    "git_clone",
+    "git_push",
+    "git_pull",
+    "git_commit",
+    "git_add",
+    "git_status",
+    "python",
+    "python.exe",
+    "python3",
+    "python3.exe",
+    "python3.11",
+    "python3.11.exe",
+    "python3.12",
+    "python3.12.exe",
+    "py.exe",
+    "conda.exe",
+    "conda",
+    "conda_activate",
+    "conda_install",
+    "pip",
+    "pip3",
+    "python_exec",
+    "ssh",
+    "ssh-keygen",
+    "git_config",
+    "git_remote",
+    "git_clone",
+    "rustc",
+    "sh",
+    "bash",
+    "python3",
+    "python",
+    "python3.11",
+    "python3.12",
+    "go",
+    "gofmt",
+    "go-build",
+    "rustc",
+    "cargo",
+    "node",
+    "npm",
+    "npx",
+    "yarn",
+    "pnpm",
+    "typescript",
+    "tsc",
+    "ts-node",
+    "deno",
+    "bun",
+    "pip",
+    "pip3",
+    "poetry",
+    "vi",
+    "vim",
+    "nano",
+    "chmod",
+    "chown",
+    "tar",
+    "zip",
+    "unzip",
+    "gzip",
+    "gunzip",
+    "zip",
+    "unzip",
+    "df",
+    "du",
+    "free",
+    "top",
+    "ps",
+    "kill",
+    "pkill",
+    "pgrep",
+    "xargs",
+    "tee",
+    "less",
+    "more",
+    "py",
+    "start",
+    "call",
+    "cmd",
+    "powershell",
+    "batch",
+    "execute",
+    "run",
+    "shell",
+    "script",
+]
+forbidden_paths = []
+max_actions_per_hour = 1000
+max_cost_per_day_cents = 1000
+require_approval_for_medium_risk = false
+block_high_risk_commands = false
+auto_approve = [
+    "file_read",
+    "memory_recall",
+    "git",
+    "github",
+    "gh",
+    "git_config",
+    "git_push",
+    "git_pull",
+    "git_clone",
+    "git_commit",
+    "git_add",
+    "git_status",
+    "python",
+    "python3",
+    "python3.11",
+    "python3.12",
+    "conda",
+    "conda_activate",
+    "conda_install",
+    "pip",
+    "pip3",
+    "python_exec",
+    "py",
+    "py.exe",
+    "python.exe",
+    "python3.exe",
+    "start",
+    "call",
+    "cmd",
+    "execute",
+    "run",
+    "shell",
+]
+always_ask = []
+
+[runtime]
+kind = "native"
+
+[runtime.docker]
+image = "alpine:3.20"
+network = "none"
+memory_limit_mb = 512
+cpu_limit = 1.0
+read_only_rootfs = true
+mount_workspace = true
+allowed_workspace_roots = []
+
+[reliability]
+provider_retries = 3
+provider_backoff_ms = 500
+fallback_providers = []
+api_keys = ["google:AIzaSyBpQrTo5rHiUqpoehP0uofxbLgPzHLkjSk"]
+channel_initial_backoff_secs = 2
+channel_max_backoff_secs = 60
+scheduler_poll_secs = 15
+scheduler_retries = 2
+
+[reliability.model_fallbacks]
+# Fallback chain: if glm-5-turbo fails, automatically try glm-4.7
+glm-5-turbo = ["glm-4.7"]
+
+[scheduler]
+enabled = true
+max_tasks = 64
+max_concurrent = 4
+
+[agent]
+compact_context = false
+max_tool_iterations = 999
+max_history_messages = 50
+parallel_tools = false
+tool_dispatcher = "auto"
+
+[skills]
+open_skills_enabled = false
+prompt_injection_mode = "full"
+
+[query_classification]
+enabled = false
+rules = []
+
+[heartbeat]
+enabled = false
+interval_minutes = 30
+
+[cron]
+enabled = true
+max_run_history = 50
+
+[channels_config]
+cli = false
+message_timeout_secs = 300
+
+[channels_config.telegram]
+bot_token = "8694658163:AAGGqREUMKLWnsMvMrvLVJetLa3TpkhS5zA"
+allowed_users = ["521797087"]
+stream_mode = "off"
+draft_update_interval_ms = 1000
+interrupt_on_new_message = false
+mention_only = false
+
+[memory]
+backend = "sqlite"
+auto_save = true
+hygiene_enabled = true
+archive_after_days = 7
+purge_after_days = 30
+conversation_retention_days = 30
+embedding_provider = "none"
+embedding_model = "text-embedding-3-small"
+embedding_dimensions = 1536
+vector_weight = 0.7
+keyword_weight = 0.3
+min_relevance_score = 0.4
+embedding_cache_size = 10000
+chunk_max_tokens = 512
+response_cache_enabled = false
+response_cache_ttl_minutes = 60
+response_cache_max_entries = 5000
+snapshot_enabled = false
+snapshot_on_hygiene = false
+auto_hydrate = true
+
+[storage.provider.config]
+provider = ""
+schema = "public"
+table = "memories"
+
+[tunnel]
+provider = "none"
+
+[gateway]
+port = 3000
+host = "127.0.0.1"
+require_pairing = true
+allow_public_bind = false
+paired_tokens = ["983df0dc616fa3e2d114c77283998a190d571288d12a8911797eafa2912331fc"]
+pair_rate_limit_per_minute = 10
+webhook_rate_limit_per_minute = 60
+trust_forwarded_headers = false
+rate_limit_max_keys = 10000
+idempotency_ttl_secs = 300
+idempotency_max_keys = 10000
+
+[composio]
+enabled = false
+entity_id = "default"
+
+[secrets]
+encrypt = true
+
+[browser]
+enabled = false
+allowed_domains = []
+backend = "agent_browser"
+native_headless = true
+native_webdriver_url = "http://127.0.0.1:9515"
+
+[browser.computer_use]
+endpoint = "http://127.0.0.1:8787/v1/actions"
+timeout_ms = 15000
+allow_remote_endpoint = false
+window_allowlist = []
+
+[http_request]
+enabled = false
+allowed_domains = []
+max_response_size = 0
+timeout_secs = 0
+
+[multimodal]
+max_images = 4
+max_image_size_mb = 5
+allow_remote_fetch = false
+
+[web_search]
+enabled = true
+provider = "brave"
+brave_api_key = ""
+max_results = 5
+timeout_secs = 30
+
+[proxy]
+enabled = false
+no_proxy = []
+scope = "zeroclaw"
+services = []
+
+[identity]
+format = "aieos"
+aieos_path = '/project/lana-identity.json'
+
+[cost]
+enabled = false
+daily_limit_usd = 10.0
+monthly_limit_usd = 100.0
+warn_at_percent = 80
+allow_override = false
+
+[cost.prices."google/gemini-2.0-flash"]
+input = 0.1
+output = 0.4
+
+[cost.prices."anthropic/claude-3-haiku"]
+input = 0.25
+output = 1.25
+
+[cost.prices."openai/gpt-4o"]
+input = 5.0
+output = 15.0
+
+[cost.prices."google/gemini-1.5-pro"]
+input = 1.25
+output = 5.0
+
+[cost.prices."openai/gpt-4o-mini"]
+input = 0.15
+output = 0.6
+
+[cost.prices."openai/o1-preview"]
+input = 15.0
+output = 60.0
+
+[cost.prices."anthropic/claude-sonnet-4-20250514"]
+input = 3.0
+output = 15.0
+
+[cost.prices."anthropic/claude-opus-4-20250514"]
+input = 15.0
+output = 75.0
+
+[cost.prices."anthropic/claude-3.5-sonnet"]
+input = 3.0
+output = 15.0
+
+[peripherals]
+enabled = false
+boards = []
+
+[mcp]
+enabled = true
+
+[[mcp.servers]]
+name = "local-mcp-bridge"
+transport = "http"
+url = "http://host.docker.internal:8002"
+enabled = true
+headers = {}
+
+[agents]
+
+[hardware]
+enabled = false
+transport = "None"
+baud_rate = 115200
+workspace_datasheets = false

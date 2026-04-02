@@ -1,0 +1,81 @@
+# Lana's ZeroClaw Docker Configuration
+#
+# Quick start:
+#   1. Make sure Docker Desktop is running
+#   2. Run: docker compose -f docker-compose.lana.yml up -d
+#   3. Logs: docker compose -f docker-compose.lana.yml logs -f
+#   4. Stop: docker compose -f docker-compose.lana.yml down
+#
+# This solves all Windows environment variable issues by running in a clean Linux container
+
+services:
+  zeroclaw:
+    build:
+      context: .
+      target: dev  # Use dev stage instead of release (has full filesystem)
+    container_name: lana-zeroclaw
+    restart: unless-stopped
+
+    # Override command to use Docker-specific config directory
+    command: ["daemon", "--config-dir", "/docker-config"]
+
+    environment:
+      # Z.AI API Key (main provider for text) - unencrypted for Docker
+      - API_KEY=7e6dbfb19a054bbba20600f9e5bc72a1.SzbN7JlSz6MBUNJb
+      - ZEROCLAW_API_KEY=7e6dbfb19a054bbba20600f9e5bc72a1.SzbN7JlSz6MBUNJb
+
+      # Custom Anthropic-compatible provider (Z.AI)
+      - PROVIDER=anthropic-custom:https://api.z.ai/api/anthropic
+      - ZEROCLAW_MODEL=glm-5-turbo
+
+      # Google API Key (for vision, though we'll use Z.AI vision tool instead)
+      - GOOGLE_API_KEY=AIzaSyBpQrTo5rHiUqpoehP0uofxbLgPzHLkjSk
+      - GEMINI_API_KEY=AIzaSyBpQrTo5rHiUqpoehP0uofxbLgPzHLkjSk
+
+      # Allow public bind inside Docker
+      - ZEROCLAW_ALLOW_PUBLIC_BIND=true
+
+      # IMPORTANT: Use host.docker.internal for MCP bridge access from Windows Docker
+      # This allows the container to reach services running on Windows host
+      - MCP_BRIDGE_URL=http://host.docker.internal:8002
+
+      # Telegram will be configured in mounted config.toml
+      - TELEGRAM_BOT_TOKEN=8694658163:AAGGqREUMKLWnsMvMrvLVJetLa3TpkhS5zA
+
+    volumes:
+      # Mount existing ZeroClaw data directory (config, memory, skills, etc.)
+      - C:\Users\rafae\.zeroclaw:/zeroclaw-data
+
+      # Mount project directory for identity file access
+      - C:\Users\rafae\Desktop\zero-working\zeroclaw:/project
+
+      # Mount workspace for file access (Lana's workspace - she creates and maintains projects here)
+      - C:\Users\rafae\.zeroclaw\workspace:/zeroclaw-data/workspace
+
+      # Docker-specific config directory (overrides paths for Docker)
+      - ./docker-config:/docker-config
+
+    ports:
+      # Gateway API port
+      - "3000:3000"
+
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+    # Network mode to access host services (like MCP bridge on localhost)
+    network_mode: bridge
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "zeroclaw", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

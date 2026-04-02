@@ -97,8 +97,33 @@ struct Content {
 }
 
 #[derive(Debug, Serialize, Clone)]
-struct Part {
-    text: String,
+#[serde(untagged)]
+enum Part {
+    Text { text: String },
+    InlineData {
+        inline_data: InlineData,
+    },
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct InlineData {
+    mime_type: String,
+    data: String,  // base64 encoded
+}
+
+impl Part {
+    fn text(text: impl Into<String>) -> Self {
+        Part::Text { text: text.into() }
+    }
+
+    fn inline_data(mime_type: impl Into<String>, data: impl Into<String>) -> Self {
+        Part::InlineData {
+            inline_data: InlineData {
+                mime_type: mime_type.into(),
+                data: data.into(),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -423,20 +448,23 @@ impl Provider for GeminiProvider {
     ) -> anyhow::Result<String> {
         let system_instruction = system_prompt.map(|sys| Content {
             role: None,
-            parts: vec![Part {
-                text: sys.to_string(),
-            }],
+            parts: vec![Part::text(sys.to_string())],
         });
 
         let contents = vec![Content {
             role: Some("user".to_string()),
-            parts: vec![Part {
-                text: message.to_string(),
-            }],
+            parts: vec![Part::text(message.to_string())],
         }];
 
         self.send_generate_content(contents, system_instruction, model, temperature)
             .await
+    }
+
+    fn capabilities(&self) -> crate::providers::ProviderCapabilities {
+        crate::providers::ProviderCapabilities {
+            native_tool_calling: true,
+            vision: true,  // Gemini 2.0 Flash supports vision
+        }
     }
 
     async fn chat_with_history(
@@ -456,18 +484,14 @@ impl Provider for GeminiProvider {
                 "user" => {
                     contents.push(Content {
                         role: Some("user".to_string()),
-                        parts: vec![Part {
-                            text: msg.content.clone(),
-                        }],
+                        parts: vec![Part::text(msg.content.clone())],
                     });
                 }
                 "assistant" => {
                     // Gemini API uses "model" role instead of "assistant"
                     contents.push(Content {
                         role: Some("model".to_string()),
-                        parts: vec![Part {
-                            text: msg.content.clone(),
-                        }],
+                        parts: vec![Part::text(msg.content.clone())],
                     });
                 }
                 _ => {}
@@ -479,14 +503,81 @@ impl Provider for GeminiProvider {
         } else {
             Some(Content {
                 role: None,
-                parts: vec![Part {
-                    text: system_parts.join("\n\n"),
-                }],
+                parts: vec![Part::text(system_parts.join("\n\n"))],
             })
         };
 
         self.send_generate_content(contents, system_instruction, model, temperature)
             .await
+    }
+
+    async fn chat(
+        &self,
+        request: crate::providers::traits::ChatRequest<'_>,
+        model: &str,
+        temperature: f64,
+    ) -> anyhow::Result<crate::providers::traits::ChatResponse> {
+        use crate::multimodal;
+
+        // Split system prompt from messages
+        let (system_msgs, user_msgs): (Vec<_>, Vec<_>) = request
+            .messages
+            .iter()
+            .partition(|msg| msg.role == "system");
+        let system_prompt = system_msgs.first().map(|m| m.content.clone());
+
+        // Convert ChatMessages to Gemini Content with image support
+        let gemini_messages: Vec<Content> = user_msgs
+            .into_iter()
+            .map(|msg| {
+                let role = match msg.role.as_str() {
+                    "user" => Some("user".to_string()),
+                    "assistant" => Some("model".to_string()),
+                    _ => None,
+                };
+
+                // Parse image markers and convert to Gemini parts
+                let (cleaned_content, image_refs) = multimodal::parse_image_markers(&msg.content);
+
+                let mut parts: Vec<Part> = Vec::new();
+                if !cleaned_content.is_empty() {
+                    parts.push(Part::text(cleaned_content));
+                }
+
+                // Convert image refs to inline_data parts
+                for img_ref in image_refs {
+                    // Extract base64 data from [IMAGE:data:image/jpeg;base64,...] format
+                    if let Some(data_uri) = img_ref.strip_prefix("[IMAGE:") {
+                        if let Some(uri_end) = data_uri.find(']') {
+                            let data_uri = &data_uri[..uri_end];
+                            if let Some(comma_pos) = data_uri.find(',') {
+                                let mime_type = &data_uri[..comma_pos];
+                                let base64_data = &data_uri[comma_pos + 1..];
+                                parts.push(Part::inline_data(mime_type, base64_data));
+                            }
+                        }
+                    }
+                }
+
+                Content { role, parts }
+            })
+            .collect();
+
+        // Build system instruction
+        let system_instruction = system_prompt.map(|sys| Content {
+            role: None,
+            parts: vec![Part::text(sys)],
+        });
+
+        // Send request
+        let response = self
+            .send_generate_content(gemini_messages, system_instruction, model, temperature)
+            .await?;
+
+        Ok(crate::providers::traits::ChatResponse {
+            text: Some(response),
+            tool_calls: Vec::new(),
+        })
     }
 
     async fn warmup(&self) -> anyhow::Result<()> {

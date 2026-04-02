@@ -39,9 +39,18 @@ impl RuntimeAdapter for NativeRuntime {
         command: &str,
         workspace_dir: &Path,
     ) -> anyhow::Result<tokio::process::Command> {
-        let mut process = tokio::process::Command::new("sh");
-        process.arg("-c").arg(command).current_dir(workspace_dir);
-        Ok(process)
+        #[cfg(windows)]
+        {
+            let mut process = tokio::process::Command::new("cmd");
+            process.arg("/C").arg(command).current_dir(workspace_dir);
+            Ok(process)
+        }
+        #[cfg(not(windows))]
+        {
+            let mut process = tokio::process::Command::new("sh");
+            process.arg("-c").arg(command).current_dir(workspace_dir);
+            Ok(process)
+        }
     }
 }
 
