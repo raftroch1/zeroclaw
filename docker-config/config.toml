@@ -6,9 +6,9 @@ default_temperature = 0.7
 
 # Route vision requests to Gemini 2.0 Flash for multimodal capabilities
 model_routes = [
-  { pattern = "^vision|^image|^analyze.*image", provider = "gemini", model = "gemini-2.0-flash-exp" },
+  { hint = "vision", pattern = "^vision|^image|^analyze.*image", provider = "gemini", model = "gemini-2.0-flash-exp" },
   # Route code generation to Z.AI
-  { pattern = "^code|^debug|^fix|^implement", provider = "anthropic-custom", model = "glm-5-turbo" },
+  { hint = "code", pattern = "^code|^debug|^fix|^implement", provider = "anthropic-custom", model = "glm-5-turbo" },
 ]
 
 embedding_routes = []
@@ -308,10 +308,10 @@ allow_remote_endpoint = false
 window_allowlist = []
 
 [http_request]
-enabled = false
-allowed_domains = []
-max_response_size = 0
-timeout_secs = 0
+enabled = true
+allowed_domains = ["host.docker.internal:8002"]
+max_response_size = 1048576
+timeout_secs = 30
 
 [multimodal]
 max_images = 4
@@ -324,6 +324,12 @@ provider = "brave"
 brave_api_key = ""
 max_results = 5
 timeout_secs = 30
+
+[mcp_access]
+# Allow MCP bridge access for external tools
+enabled = true
+allowed_hosts = ["host.docker.internal:8002", "localhost:8002"]
+allowed_domains = []
 
 [proxy]
 enabled = false
@@ -395,7 +401,7 @@ headers = {}
 [[mcp.servers]]
 name = "mem0-brain-surgeon"
 transport = "http"
-url = "http://host.docker.internal:3000"
+url = "http://host.docker.internal:3001"
 enabled = true
 timeout_secs = 30
 

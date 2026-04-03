@@ -39,6 +39,11 @@ services:
       # This allows the container to reach services running on Windows host
       - MCP_BRIDGE_URL=http://host.docker.internal:8002
 
+      # Docker daemon access for orchestrator capabilities
+      # Point to Docker Desktop daemon on Windows host
+      # Note: Docker Desktop must have "Expose daemon on tcp://localhost:2375" enabled
+      - DOCKER_HOST=tcp://host.docker.internal:2375
+
       # Telegram will be configured in mounted config.toml
       - TELEGRAM_BOT_TOKEN=8694658163:AAGGqREUMKLWnsMvMrvLVJetLa3TpkhS5zA
 

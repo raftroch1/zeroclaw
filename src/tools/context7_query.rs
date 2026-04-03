@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
 
-const MCP_BRIDGE_URL: &str = "http://localhost:8002";
+const MCP_BRIDGE_URL: &str = "http://host.docker.internal:8002";
 
 /// Query documentation using Context7 through the MCP bridge
 pub struct Context7QueryTool {
