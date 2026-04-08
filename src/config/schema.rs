@@ -190,6 +190,10 @@ pub struct Config {
     /// MCP (Model Context Protocol) server configuration (`[mcp]`).
     #[serde(default)]
     pub mcp: MCPConfig,
+
+    /// Hermes Agent gateway integration configuration (`[hermes]`).
+    #[serde(default)]
+    pub hermes: HermesConfig,
 }
 
 // ── Delegate Agents ──────────────────────────────────────────────
@@ -1579,6 +1583,81 @@ fn default_mcp_section_enabled() -> bool {
     false
 }
 
+// ── Hermes Agent Gateway ────────────────────────────────────────
+
+/// Configuration for the Hermes Agent HTTP gateway integration.
+///
+/// Hermes Agent is a Python-based multi-agent orchestration system. ZeroClaw
+/// communicates with it via the HTTP gateway bridge pattern: Hermes runs
+/// `hermes gateway` in a separate container, and ZeroClaw sends HTTP requests
+/// to delegate tasks.
+///
+/// # Example
+///
+/// ```toml
+/// [hermes]
+/// enabled = true
+/// gateway_url = "http://hermes:8080"
+/// timeout_secs = 300
+/// api_key = ""
+/// default_profile = ""
+/// shared_workspace = "/workspace"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct HermesConfig {
+    /// Whether Hermes integration is enabled. Default: `false`.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Base URL of the Hermes HTTP gateway (e.g., `"http://hermes:8080"`).
+    /// When running in Docker Compose, use the service name as hostname.
+    #[serde(default = "default_hermes_gateway_url")]
+    pub gateway_url: String,
+
+    /// Request timeout in seconds. Complex tasks may need 300+ seconds.
+    /// Default: `300` (5 minutes).
+    #[serde(default = "default_hermes_timeout")]
+    pub timeout_secs: u64,
+
+    /// Optional API key for Hermes gateway authentication.
+    /// Leave empty if Hermes gateway does not require auth.
+    #[serde(default)]
+    pub api_key: String,
+
+    /// Default Hermes profile name. Maps to `hermes --profile <name>`.
+    /// Profiles configure HERMES_HOME to `~/.hermes/profiles/<name>`.
+    /// Leave empty to use Hermes's default profile.
+    #[serde(default)]
+    pub default_profile: String,
+
+    /// Shared workspace path accessible to both ZeroClaw and Hermes containers.
+    /// Should be a volume mount point shared between both services.
+    /// Example: `"/workspace"` when both containers mount the same volume.
+    #[serde(default)]
+    pub shared_workspace: String,
+}
+
+fn default_hermes_gateway_url() -> String {
+    "http://hermes:8080".into()
+}
+
+fn default_hermes_timeout() -> u64 {
+    300
+}
+
+impl Default for HermesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            gateway_url: default_hermes_gateway_url(),
+            timeout_secs: default_hermes_timeout(),
+            api_key: String::new(),
+            default_profile: String::new(),
+            shared_workspace: String::new(),
+        }
+    }
+}
+
 impl Default for StorageProviderConfig {
     fn default() -> Self {
         Self {
@@ -2922,6 +3001,7 @@ impl Default for Config {
             hardware: HardwareConfig::default(),
             query_classification: QueryClassificationConfig::default(),
             mcp: MCPConfig::default(),
+            hermes: HermesConfig::default(),
         }
     }
 }
@@ -4073,6 +4153,8 @@ default_temperature = 0.7
             peripherals: PeripheralsConfig::default(),
             agents: HashMap::new(),
             hardware: HardwareConfig::default(),
+            mcp: MCPConfig::default(),
+            hermes: HermesConfig::default(),
         };
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -4242,6 +4324,8 @@ tool_dispatcher = "xml"
             peripherals: PeripheralsConfig::default(),
             agents: HashMap::new(),
             hardware: HardwareConfig::default(),
+            mcp: MCPConfig::default(),
+            hermes: HermesConfig::default(),
         };
 
         config.save().await.unwrap();

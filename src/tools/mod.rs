@@ -33,6 +33,7 @@ pub mod file_write;
 pub mod git_operations;
 pub mod glob_search;
 pub mod hardware_board_info;
+pub mod hermes_gateway;
 pub mod mem0_memory;
 pub mod hardware_memory_map;
 pub mod hardware_memory_read;
@@ -74,6 +75,7 @@ pub use hardware_board_info::HardwareBoardInfoTool;
 pub use hardware_memory_map::HardwareMemoryMapTool;
 #[allow(unused_imports)]
 pub use hardware_memory_read::HardwareMemoryReadTool;
+pub use hermes_gateway::HermesGatewayTool;
 pub use http_request::HttpRequestTool;
 pub use image_info::ImageInfoTool;
 pub use memory_forget::MemoryForgetTool;
@@ -278,6 +280,14 @@ pub fn all_tools_with_runtime(
             root_config.web_search.brave_api_key.clone(),
             root_config.web_search.max_results,
             root_config.web_search.timeout_secs,
+        )));
+    }
+
+    // Hermes Agent gateway integration
+    if root_config.hermes.enabled {
+        tool_arcs.push(Arc::new(HermesGatewayTool::from_config(
+            security.clone(),
+            &root_config.hermes,
         )));
     }
 

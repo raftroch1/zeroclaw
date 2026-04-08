@@ -186,6 +186,7 @@ pub async fn run_wizard(force: bool) -> Result<Config> {
         hardware: hardware_config,
         query_classification: crate::config::QueryClassificationConfig::default(),
         mcp: crate::config::MCPConfig::default(),
+        hermes: crate::config::HermesConfig::default(),
     };
 
     println!(
@@ -430,6 +431,7 @@ async fn run_quick_setup_with_home(
         hardware: crate::config::HardwareConfig::default(),
         query_classification: crate::config::QueryClassificationConfig::default(),
         mcp: crate::config::MCPConfig::default(),
+        hermes: crate::config::HermesConfig::default(),
     };
 
     config.save().await?;
