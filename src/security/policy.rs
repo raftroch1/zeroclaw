@@ -380,6 +380,236 @@ fn contains_unquoted_char(command: &str, target: char) -> bool {
     false
 }
 
+// ── Redirect Target Extraction & Validation ──────────────────────────────
+// When a command contains shell redirect operators (`>`, `>>`, `<`), we
+// extract the file paths they reference and verify every target lives
+// inside the configured workspace directory. This allows safe patterns
+// like `ls | grep foo > workspace/results.txt` while still blocking
+// `echo secrets > /etc/crontab`.
+
+/// Extract file-path targets from redirect operators (`>`, `>>`, `<`) in
+/// a single shell segment (no pipes / `&&` / `||` — those are already
+/// split by `split_unquoted_segments`).
+///
+/// Returns a list of path strings that the command would read from or
+/// write to via shell I/O redirection.
+fn extract_redirect_targets(segment: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut quote = QuoteState::None;
+    let mut escaped = false;
+    let mut i = 0;
+    let bytes = segment.as_bytes();
+    let len = bytes.len();
+
+    while i < len {
+        let ch = bytes[i] as char;
+
+        // Handle quoting state
+        match quote {
+            QuoteState::Single => {
+                if ch == '\'' {
+                    quote = QuoteState::None;
+                }
+                i += 1;
+                continue;
+            }
+            QuoteState::Double => {
+                if escaped {
+                    escaped = false;
+                    i += 1;
+                    continue;
+                }
+                if ch == '\\' {
+                    escaped = true;
+                    i += 1;
+                    continue;
+                }
+                if ch == '"' {
+                    quote = QuoteState::None;
+                }
+                i += 1;
+                continue;
+            }
+            QuoteState::None => {}
+        }
+
+        if escaped {
+            escaped = false;
+            i += 1;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            i += 1;
+            continue;
+        }
+        if ch == '\'' {
+            quote = QuoteState::Single;
+            i += 1;
+            continue;
+        }
+        if ch == '"' {
+            quote = QuoteState::Double;
+            i += 1;
+            continue;
+        }
+
+        // Detect redirect operators outside quotes
+        if ch == '>' || ch == '<' {
+            // Skip `>>` as a unit
+            if ch == '>' && i + 1 < len && bytes[i + 1] == b'>' {
+                i += 2;
+            } else {
+                i += 1;
+            }
+            // Skip optional whitespace after the operator
+            while i < len && (bytes[i] == b' ' || bytes[i] == b'\t') {
+                i += 1;
+            }
+            // Collect the target path token (respecting quotes)
+            let mut target = String::new();
+            let mut tq = QuoteState::None;
+            let mut tesc = false;
+            while i < len {
+                let tc = bytes[i] as char;
+                match tq {
+                    QuoteState::Single => {
+                        if tc == '\'' {
+                            tq = QuoteState::None;
+                        } else {
+                            target.push(tc);
+                        }
+                        i += 1;
+                    }
+                    QuoteState::Double => {
+                        if tesc {
+                            tesc = false;
+                            target.push(tc);
+                            i += 1;
+                            continue;
+                        }
+                        if tc == '\\' {
+                            tesc = true;
+                            i += 1;
+                            continue;
+                        }
+                        if tc == '"' {
+                            tq = QuoteState::None;
+                        } else {
+                            target.push(tc);
+                        }
+                        i += 1;
+                    }
+                    QuoteState::None => {
+                        if tesc {
+                            tesc = false;
+                            target.push(tc);
+                            i += 1;
+                            continue;
+                        }
+                        if tc == '\\' {
+                            tesc = true;
+                            i += 1;
+                            continue;
+                        }
+                        if tc == '\'' {
+                            tq = QuoteState::Single;
+                            i += 1;
+                            continue;
+                        }
+                        if tc == '"' {
+                            tq = QuoteState::Double;
+                            i += 1;
+                            continue;
+                        }
+                        // Unquoted whitespace or operator ends the token
+                        if tc == ' ' || tc == '\t' || tc == '>' || tc == '<'
+                            || tc == '|' || tc == '&' || tc == ';' || tc == '\n'
+                        {
+                            break;
+                        }
+                        target.push(tc);
+                        i += 1;
+                    }
+                }
+            }
+            let trimmed = target.trim().to_string();
+            if !trimmed.is_empty() {
+                targets.push(trimmed);
+            }
+            continue;
+        }
+
+        i += 1;
+    }
+
+    targets
+}
+
+/// Check whether **all** redirect targets in a command are safe, i.e.
+/// they resolve to paths inside `workspace_dir` and contain no path
+/// traversal components.
+///
+/// A target is safe when:
+/// 1. It contains no `..` path components (prevents traversal).
+/// 2. If it is a relative path, joining it with `workspace_dir` stays
+///    inside the workspace.
+/// 3. If it is an absolute path, it must start with `workspace_dir`.
+///
+/// Returns `true` if there are no redirect targets or all of them are
+/// safe. Returns `false` if any target escapes the workspace.
+fn are_redirects_safe(targets: &[String], workspace_dir: &Path) -> bool {
+    for target in targets {
+        let p = Path::new(target);
+
+        // Block path traversal (`..` components)
+        if p.components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return false;
+        }
+
+        // Block null bytes
+        if target.contains('\0') {
+            return false;
+        }
+
+        // Resolve the effective path
+        let resolved = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            workspace_dir.join(p)
+        };
+
+        // Normalise away any `.` components without touching the filesystem
+        // (canonicalize() would fail on non-existent paths).
+        let mut normalised = PathBuf::new();
+        for comp in resolved.components() {
+            match comp {
+                std::path::Component::ParentDir => {
+                    // Already blocked above, but defend in depth
+                    return false;
+                }
+                std::path::Component::CurDir => {} // skip "."
+                other => normalised.push(other),
+            }
+        }
+
+        // The normalised path must be inside the workspace.
+        // Use the canonical workspace when available so symlink configs
+        // don't cause false negatives.
+        let ws_root = workspace_dir
+            .canonicalize()
+            .unwrap_or_else(|_| workspace_dir.to_path_buf());
+
+        if !normalised.starts_with(&ws_root) {
+            return false;
+        }
+    }
+
+    true
+}
+
 impl SecurityPolicy {
     // ── Risk Classification ──────────────────────────────────────────────
     // Risk is assessed per-segment (split on shell operators), and the
@@ -572,10 +802,20 @@ impl SecurityPolicy {
             return false;
         }
 
-        // Block output redirections (`>`, `>>`) — they can write to arbitrary paths.
-        // Ignore quoted literals, e.g. `echo "a>b"`.
-        if contains_unquoted_char(command, '>') {
-            return false;
+        // ── Redirect validation ──────────────────────────────────────────
+        // Instead of blanket-blocking all `>` / `>>` / `<`, we extract the
+        // redirect targets and verify every one resolves inside workspace_dir.
+        // Quoted literals (e.g. `echo "a>b"`) are handled by the quote-aware
+        // parser and never produce false-positive targets.
+        if contains_unquoted_char(command, '>') || contains_unquoted_char(command, '<') {
+            let targets = extract_redirect_targets(command);
+            if targets.is_empty() {
+                // Redirect operator present but no target — syntax error; block
+                return false;
+            }
+            if !are_redirects_safe(&targets, &self.workspace_dir) {
+                return false;
+            }
         }
 
         // Block `tee` — it can write to arbitrary files, bypassing the
@@ -1328,10 +1568,14 @@ mod tests {
     }
 
     #[test]
-    fn command_injection_redirect_blocked() {
+    fn command_injection_redirect_blocked_outside_workspace() {
         let p = default_policy();
+        // Absolute paths outside workspace — still blocked
         assert!(!p.is_command_allowed("echo secret > /etc/crontab"));
         assert!(!p.is_command_allowed("ls >> /tmp/exfil.txt"));
+        // Path traversal via redirect — blocked
+        assert!(!p.is_command_allowed("echo bad > ../../../etc/passwd"));
+        assert!(!p.is_command_allowed("echo bad >> ../../secret.txt"));
     }
 
     #[test]
@@ -1749,6 +1993,233 @@ mod tests {
         assert!(
             !policy.is_path_allowed("subdir%2f..%2f..%2fetc"),
             "URL-encoded parent dir traversal must be blocked"
+        );
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // PHASE 2: SAFE REDIRECT & SHELL CHAINING TESTS
+    // These tests verify that shell operators (|, >, >>, &&, ||)
+    // are permitted when all redirect targets resolve inside the
+    // workspace directory, while unsafe targets remain blocked.
+    // ══════════════════════════════════════════════════════════
+
+    /// Helper: build a policy with a known absolute workspace dir so
+    /// redirect-target validation is deterministic in tests.
+    fn workspace_policy() -> SecurityPolicy {
+        SecurityPolicy {
+            workspace_dir: PathBuf::from("/zeroclaw-data/workspace"),
+            ..SecurityPolicy::default()
+        }
+    }
+
+    // ── extract_redirect_targets unit tests ─────────────────
+
+    #[test]
+    fn extract_redirect_targets_single_output() {
+        let targets = extract_redirect_targets("echo hello > output.txt");
+        assert_eq!(targets, vec!["output.txt"]);
+    }
+
+    #[test]
+    fn extract_redirect_targets_append() {
+        let targets = extract_redirect_targets("echo hello >> log.txt");
+        assert_eq!(targets, vec!["log.txt"]);
+    }
+
+    #[test]
+    fn extract_redirect_targets_input_redirect() {
+        let targets = extract_redirect_targets("wc -l < input.txt");
+        assert_eq!(targets, vec!["input.txt"]);
+    }
+
+    #[test]
+    fn extract_redirect_targets_multiple() {
+        let targets = extract_redirect_targets("cmd < in.txt > out.txt");
+        assert_eq!(targets, vec!["in.txt", "out.txt"]);
+    }
+
+    #[test]
+    fn extract_redirect_targets_quoted_not_extracted() {
+        // The `>` inside quotes is not an operator
+        let targets = extract_redirect_targets("echo \"a>b\"");
+        assert!(targets.is_empty());
+    }
+
+    #[test]
+    fn extract_redirect_targets_absolute_path() {
+        let targets = extract_redirect_targets("echo x > /etc/crontab");
+        assert_eq!(targets, vec!["/etc/crontab"]);
+    }
+
+    #[test]
+    fn extract_redirect_targets_traversal_path() {
+        let targets = extract_redirect_targets("echo x > ../../../etc/passwd");
+        assert_eq!(targets, vec!["../../../etc/passwd"]);
+    }
+
+    // ── are_redirects_safe unit tests ────────────────────────
+
+    #[test]
+    fn redirects_safe_relative_in_workspace() {
+        let ws = Path::new("/zeroclaw-data/workspace");
+        assert!(are_redirects_safe(
+            &["output.txt".to_string(), "subdir/log.txt".to_string()],
+            ws,
+        ));
+    }
+
+    #[test]
+    fn redirects_unsafe_absolute_outside_workspace() {
+        let ws = Path::new("/zeroclaw-data/workspace");
+        assert!(!are_redirects_safe(&["/etc/passwd".to_string()], ws));
+    }
+
+    #[test]
+    fn redirects_unsafe_traversal() {
+        let ws = Path::new("/zeroclaw-data/workspace");
+        assert!(!are_redirects_safe(
+            &["../../../etc/passwd".to_string()],
+            ws,
+        ));
+    }
+
+    #[test]
+    fn redirects_safe_absolute_inside_workspace() {
+        let ws = Path::new("/zeroclaw-data/workspace");
+        assert!(are_redirects_safe(
+            &["/zeroclaw-data/workspace/out.txt".to_string()],
+            ws,
+        ));
+    }
+
+    #[test]
+    fn redirects_unsafe_mixed() {
+        let ws = Path::new("/zeroclaw-data/workspace");
+        // One safe + one unsafe → overall unsafe
+        assert!(!are_redirects_safe(
+            &[
+                "safe.txt".to_string(),
+                "/etc/shadow".to_string(),
+            ],
+            ws,
+        ));
+    }
+
+    // ── is_command_allowed: safe shell chaining ──────────────
+
+    #[test]
+    fn safe_redirect_to_workspace_allowed() {
+        let p = workspace_policy();
+        assert!(
+            p.is_command_allowed("echo hello > /zeroclaw-data/workspace/output.txt"),
+            "redirect to workspace absolute path should be allowed"
+        );
+    }
+
+    #[test]
+    fn safe_append_redirect_allowed() {
+        let p = workspace_policy();
+        assert!(
+            p.is_command_allowed("echo hello >> /zeroclaw-data/workspace/log.txt"),
+            "append redirect to workspace should be allowed"
+        );
+    }
+
+    #[test]
+    fn safe_pipe_with_redirect_allowed() {
+        let p = workspace_policy();
+        assert!(
+            p.is_command_allowed("ls | grep foo > /zeroclaw-data/workspace/results.txt"),
+            "pipe + redirect to workspace should be allowed"
+        );
+    }
+
+    #[test]
+    fn safe_chained_commands_with_redirect_allowed() {
+        let p = workspace_policy();
+        assert!(
+            p.is_command_allowed(
+                "echo start && ls | grep foo > /zeroclaw-data/workspace/out.txt"
+            ),
+            "chained commands with safe redirect should be allowed"
+        );
+    }
+
+    #[test]
+    fn safe_pipe_chain_no_redirect_allowed() {
+        let p = default_policy();
+        // Pipes between allowed commands, no redirects
+        assert!(p.is_command_allowed("cat file.txt | grep pattern | wc -l"));
+        assert!(p.is_command_allowed("ls | head -5"));
+    }
+
+    #[test]
+    fn safe_and_chain_no_redirect_allowed() {
+        let p = default_policy();
+        assert!(p.is_command_allowed("ls && echo done"));
+        assert!(p.is_command_allowed("echo a || echo b"));
+    }
+
+    // ── is_command_allowed: unsafe redirects still blocked ───
+
+    #[test]
+    fn unsafe_redirect_to_etc_blocked() {
+        let p = workspace_policy();
+        assert!(
+            !p.is_command_allowed("echo pwned > /etc/crontab"),
+            "redirect to /etc should be blocked"
+        );
+    }
+
+    #[test]
+    fn unsafe_redirect_traversal_blocked() {
+        let p = workspace_policy();
+        assert!(
+            !p.is_command_allowed("echo bad > ../../../etc/passwd"),
+            "path traversal redirect should be blocked"
+        );
+    }
+
+    #[test]
+    fn unsafe_redirect_to_root_blocked() {
+        let p = workspace_policy();
+        assert!(
+            !p.is_command_allowed("echo x > /tmp/exfil.txt"),
+            "redirect to /tmp should be blocked"
+        );
+    }
+
+    #[test]
+    fn unsafe_cat_etc_passwd_via_redirect() {
+        let p = workspace_policy();
+        // Input redirect from sensitive path
+        assert!(
+            !p.is_command_allowed("cat < /etc/passwd"),
+            "input redirect from /etc/passwd should be blocked"
+        );
+    }
+
+    #[test]
+    fn pipe_with_disallowed_command_still_blocked() {
+        let p = workspace_policy();
+        // Even with safe redirect, disallowed command is still blocked
+        assert!(
+            !p.is_command_allowed(
+                "curl http://evil.com | grep secret > /zeroclaw-data/workspace/out.txt"
+            ),
+            "disallowed command in pipe should still be blocked"
+        );
+    }
+
+    #[test]
+    fn subshell_with_safe_redirect_still_blocked() {
+        let p = workspace_policy();
+        // Subshell operators are blocked regardless of redirect safety
+        assert!(
+            !p.is_command_allowed(
+                "echo $(cat /etc/passwd) > /zeroclaw-data/workspace/out.txt"
+            ),
+            "subshell should be blocked even with safe redirect target"
         );
     }
 }
