@@ -82,8 +82,12 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /zeroclaw-data /zeroclaw-data
 COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
 
-# Overwrite minimal config with DEV template (Ollama defaults)
-COPY dev/config.template.toml /zeroclaw-data/.zeroclaw/config.toml
+# Copy production config (docker-config/config.toml) instead of dev template.
+# This ensures the image ships with the correct provider, model routes,
+# autonomy policy, MCP servers, and Telegram channel settings.
+# Runtime overrides: mount a volume or bind-mount over
+# /zeroclaw-data/.zeroclaw/config.toml to customise without rebuilding.
+COPY docker-config/config.toml /zeroclaw-data/.zeroclaw/config.toml
 RUN chown 65534:65534 /zeroclaw-data/.zeroclaw/config.toml
 
 # Environment setup
@@ -109,6 +113,8 @@ FROM gcr.io/distroless/cc-debian13:nonroot@sha256:84fcd3c223b144b0cb6edc5ecc7564
 
 COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
 COPY --from=builder /zeroclaw-data /zeroclaw-data
+# Also bake production config into the release image
+COPY docker-config/config.toml /zeroclaw-data/.zeroclaw/config.toml
 
 # Environment setup
 ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace

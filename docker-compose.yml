@@ -1,62 +1,78 @@
-# ZeroClaw Docker Compose Example
-# 
-# Quick start:
-#   1. Copy this file and set your API key
-#   2. Run: docker compose up -d
-#   3. Access gateway at http://localhost:3000
+# ============================================================
+# ZeroClaw – Persistent Docker Compose Configuration
+# ============================================================
 #
-# For more info: https://github.com/zeroclaw-labs/zeroclaw
+# This compose file solves the "fix → restart → revert" problem by
+# bind-mounting the config directory and workspace so that runtime
+# changes (config edits, pip packages, skill files, memory DB, etc.)
+# survive container rebuilds and restarts.
+#
+# Quick start:
+#   1. cp .env.example .env   # fill in API_KEY at minimum
+#   2. docker compose build   # bake production config into image
+#   3. docker compose up -d   # start with persistent volumes
+#   4. Access gateway at http://localhost:3000
+#
+# Rebuild after source/config changes:
+#   docker compose build --no-cache && docker compose up -d
+#
+# ============================================================
 
 services:
   zeroclaw:
-    image: ghcr.io/zeroclaw-labs/zeroclaw:latest
-    # Or build locally:
-    # build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev  # dev stage has bash/python/node; use 'release' for distroless
     container_name: zeroclaw
     restart: unless-stopped
-    
+
+    # ── Environment ──────────────────────────────────────────
+    env_file:
+      - .env
+
     environment:
-      # Required: Your LLM provider API key
-      - API_KEY=${API_KEY:-}
-      # Or use the prefixed version:
-      # - ZEROCLAW_API_KEY=${ZEROCLAW_API_KEY:-}
-      
-      # Optional: LLM provider (default: openrouter)
-      # Options: openrouter, openai, anthropic, ollama
-      - PROVIDER=${PROVIDER:-openrouter}
-      
-      # Allow public bind inside Docker (required for container networking)
+      # Allow the gateway to bind 0.0.0.0 inside the container
       - ZEROCLAW_ALLOW_PUBLIC_BIND=true
-      
-      # Optional: Model override
-      # - ZEROCLAW_MODEL=anthropic/claude-sonnet-4-20250514
-      
+
+    # ── Volumes (persistence!) ───────────────────────────────
+    # Bind-mount the config directory so edits survive restarts.
+    # On first run, the image's baked-in config is used. Once you
+    # create ./zeroclaw-data/.zeroclaw/config.toml on the host it
+    # takes precedence.
     volumes:
-      # Persist workspace and config (must match WORKDIR/HOME in Dockerfile)
-      - zeroclaw-data:/zeroclaw-data
-      
+      # Config directory – memory DB, skills, cron state, secrets
+      - ${ZEROCLAW_CONFIG_DIR:-./.zeroclaw}:/zeroclaw-data/.zeroclaw
+
+      # Workspace – agent-created files, projects, cloned repos
+      - ${ZEROCLAW_WORKSPACE_DIR:-./workspace}:/zeroclaw-data/workspace
+
+      # (Optional) Mount docker-config for live config editing
+      # Uncomment the next line if you want to edit config.toml
+      # from the repo and have it reflected immediately:
+      # - ./docker-config/config.toml:/zeroclaw-data/.zeroclaw/config.toml:ro
+
+    # ── Ports ────────────────────────────────────────────────
     ports:
-      # Gateway API port (override HOST_PORT if 3000 is taken)
+      # Gateway API
       - "${HOST_PORT:-3000}:3000"
-    
-    # Resource limits
+      # Voice API (if enabled)
+      - "${VOICE_PORT:-8001}:8001"
+
+    # ── Resources ────────────────────────────────────────────
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2G
+          cpus: '4'
+          memory: 4G
         reservations:
           cpus: '0.5'
           memory: 512M
 
-    # Health check — uses lightweight status instead of full diagnostics.
-    # For images with curl, prefer: curl -f http://localhost:3000/health
+    # ── Health Check ─────────────────────────────────────────
     healthcheck:
       test: ["CMD", "zeroclaw", "status"]
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 10s
-
-volumes:
-  zeroclaw-data:
+      start_period: 15s
