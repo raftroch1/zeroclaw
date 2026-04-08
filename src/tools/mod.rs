@@ -186,6 +186,25 @@ pub fn all_tools(
     )
 }
 
+/// Initialize an MCP client and discover its tools, blocking the current thread.
+///
+/// This bridges the sync `all_tools_with_runtime` function with the async MCP
+/// client by using `tokio::task::block_in_place` + `Handle::block_on`.
+fn discover_mcp_tools_blocking(
+    client: Arc<dyn crate::mcp::McpClient>,
+    prefix_with_server: bool,
+) -> anyhow::Result<Vec<crate::mcp::McpTool>> {
+    let handle = tokio::runtime::Handle::try_current()
+        .map_err(|_| anyhow::anyhow!("No tokio runtime available for MCP initialization"))?;
+
+    tokio::task::block_in_place(|| {
+        handle.block_on(async {
+            client.initialize().await?;
+            crate::mcp::McpTool::discover_tools(client, prefix_with_server).await
+        })
+    })
+}
+
 /// Create full tool registry including memory tools and optional Composio.
 #[allow(clippy::implicit_hasher, clippy::too_many_arguments)]
 pub fn all_tools_with_runtime(
@@ -291,21 +310,59 @@ pub fn all_tools_with_runtime(
         )));
     }
 
-    // MCP server integrations
+    // MCP server integrations (generic + legacy)
     if root_config.mcp.enabled {
         for server in &root_config.mcp.servers {
-            if server.enabled && server.transport == "http" {
-                match server.name.as_str() {
-                    "mem0-brain-surgeon" => {
-                        tool_arcs.push(Arc::new(Mem0MemoryTool::with_config(
-                            security.clone(),
-                            server.url.clone(),
-                            server.timeout_secs,
-                        )));
+            if !server.enabled {
+                continue;
+            }
+
+            match server.transport.as_str() {
+                "stdio" => {
+                    // Generic MCP stdio client — supports any MCP server.
+                    // Tool discovery and registration happens at startup.
+                    let client: Arc<dyn crate::mcp::McpClient> =
+                        Arc::new(crate::mcp::StdioMcpClient::from_config(server));
+                    let prefix = root_config.mcp.servers.len() > 1;
+                    match discover_mcp_tools_blocking(client, prefix) {
+                        Ok(tools) => {
+                            for tool in tools {
+                                tool_arcs.push(Arc::new(tool));
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                server = %server.name,
+                                error = %e,
+                                "Failed to initialize MCP stdio server, skipping"
+                            );
+                        }
                     }
-                    _ => {
-                        // Other MCP servers can be added here
+                }
+                "http" => {
+                    // Legacy HTTP-based MCP tools (backwards compatible).
+                    match server.name.as_str() {
+                        "mem0-brain-surgeon" => {
+                            tool_arcs.push(Arc::new(Mem0MemoryTool::with_config(
+                                security.clone(),
+                                server.url.clone(),
+                                server.timeout_secs,
+                            )));
+                        }
+                        _ => {
+                            tracing::info!(
+                                server = %server.name,
+                                "Unknown HTTP MCP server, skipping (use stdio transport for generic support)"
+                            );
+                        }
                     }
+                }
+                other => {
+                    tracing::warn!(
+                        server = %server.name,
+                        transport = %other,
+                        "Unsupported MCP transport type"
+                    );
                 }
             }
         }

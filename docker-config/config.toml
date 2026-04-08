@@ -405,6 +405,24 @@ url = "http://host.docker.internal:3001"
 enabled = true
 timeout_secs = 30
 
+# ByteRover MCP server (stdio transport — requires brv daemon running)
+# Uncomment to enable ByteRover code search/curation tools.
+# Prerequisites:
+#   1. npm install -g @campfirein/byterover-cli
+#   2. brv daemon start
+#   3. brv index /path/to/project  (first-time only)
+#
+# [[mcp.servers]]
+# name = "byterover"
+# transport = "stdio"
+# command = "brv"
+# args = ["mcp"]
+# enabled = true
+# timeout_secs = 30
+#
+# [mcp.servers.env]
+# BRV_PROJECT_ROOT = "/zeroclaw-data/workspace"
+
 [agents]
 
 [hardware]

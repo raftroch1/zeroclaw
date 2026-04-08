@@ -53,6 +53,7 @@ pub(crate) mod health;
 pub(crate) mod heartbeat;
 pub(crate) mod identity;
 pub(crate) mod integrations;
+pub mod mcp;
 pub mod memory;
 pub(crate) mod migration;
 pub(crate) mod multimodal;
