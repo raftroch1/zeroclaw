@@ -79,6 +79,13 @@ RUN apt-get update && apt-get install -y \
     docker-compose \
     && rm -rf /var/lib/apt/lists/*
 
+# Install ByteRover CLI for code search and knowledge curation
+RUN npm install -g byterover-cli
+
+# Install ByteRover MCP wrapper script
+COPY --chown=65534:65534 brv-mcp-wrapper.sh /usr/local/bin/brv-mcp-wrapper.sh
+RUN chmod +x /usr/local/bin/brv-mcp-wrapper.sh
+
 COPY --from=builder /zeroclaw-data /zeroclaw-data
 COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
 
