@@ -33,3 +33,5 @@ credentials.json
 # Docker config files (may contain API keys/tokens)
 docker-config/config.toml
 docker-config/daemon_state.json
+docker-compose.lana.yml
+docker-compose.persistent.yml
