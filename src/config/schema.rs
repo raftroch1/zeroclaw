@@ -923,6 +923,13 @@ pub struct HttpRequestConfig {
     /// Allowed domains for HTTP requests (exact or subdomain match)
     #[serde(default)]
     pub allowed_domains: Vec<String>,
+    /// Allow requests to localhost and private IP addresses (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.)
+    ///
+    /// ⚠️ **Security warning**: Enabling this allows the agent to access local services,
+    /// which can be useful for accessing internal APIs but may expose sensitive local
+    /// services. Only enable if you trust the agent and understand the risks.
+    #[serde(default)]
+    pub allow_private_hosts: bool,
     /// Maximum response size in bytes (default: 1MB)
     #[serde(default = "default_http_max_response_size")]
     pub max_response_size: usize,

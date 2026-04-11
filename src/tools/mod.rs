@@ -287,6 +287,7 @@ pub fn all_tools_with_runtime(
         tool_arcs.push(Arc::new(HttpRequestTool::new(
             security.clone(),
             http_config.allowed_domains.clone(),
+            http_config.allow_private_hosts,
             http_config.max_response_size,
             http_config.timeout_secs,
         )));
