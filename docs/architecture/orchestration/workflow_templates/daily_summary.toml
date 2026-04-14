@@ -1,0 +1,45 @@
+name = "daily_summary"
+version = "1.0"
+description = "After-hours daily report generation and curation"
+owner = "lana-sterling"
+
+[trigger]
+type = "cron"
+schedule = "15 21 * * 1-5"
+timezone = "UTC"
+
+[runtime]
+orchestrator_mode = "solo"
+task_timeout_seconds = 300
+
+[[stages]]
+id = "collect_day_metrics"
+agent = "trade-monitor"
+output_key = "day_metrics"
+on_error = "abort"
+
+[[stages]]
+id = "risk_reconciliation"
+agent = "risk-manager"
+input_from = ["day_metrics"]
+output_key = "risk_summary"
+on_error = "abort"
+
+[[stages]]
+id = "knowledge_update"
+agent = "knowledge-curator"
+input_from = ["day_metrics", "risk_summary"]
+output_key = "knowledge_updates"
+on_error = "continue"
+
+[[stages]]
+id = "emit_report"
+agent = "knowledge-curator"
+input_from = ["day_metrics", "risk_summary", "knowledge_updates"]
+output_key = "daily_report"
+on_error = "continue"
+
+[output]
+report_path = "/workspace/reports/daily/{{date}}-summary.md"
+log_path = "/workspace/reports/daily/daily_summary.log"
+notify_trade_log = "/workspace/alerts/trades.log"

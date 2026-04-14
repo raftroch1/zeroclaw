@@ -1,0 +1,66 @@
+version = "1.0"
+owner = "lana-sterling"
+profile = "paper-trading-safe"
+
+[safety]
+stop_flag_file = "/workspace/flags/STOP_TRADING"
+check_stop_flag_before_every_trade = true
+
+[trade_limits]
+max_trades_per_day = 4
+max_simultaneous_positions = 2
+max_loss_per_trade_pct = 15.0
+max_daily_drawdown_pct = 3.0
+
+[position_limits]
+allow_fractional = false
+max_position_notional_usd = 25000
+max_symbol_exposure_pct_of_equity = 25.0
+
+[regime_gate]
+block_if_regime_in = ["ranging"]
+require_allow_trade_true = true
+reason_template = "Regime gate blocked trade: {{regime}}"
+
+[risk_checks]
+require_market_data_freshness_seconds = 60
+require_pattern_confidence_min = 0.60
+require_liquidity_check = true
+
+[execution]
+broker = "alpaca"
+api_base_url = "https://paper-api.alpaca.markets"
+submit_timeout_seconds = 10
+cancel_timeout_seconds = 10
+max_slippage_bps = 20
+
+[notifications]
+required_for_every_trade = true
+trade_log_file = "/workspace/alerts/trades.log"
+optional_webhook_url = ""
+notify_events = ["trade_submitted", "trade_filled", "trade_rejected", "risk_rejected", "emergency_stop"]
+recipient = "Raf"
+
+[emergency_stop]
+enabled = true
+trigger_phrase = "stop trading"
+trigger_file_create = "/workspace/flags/STOP_TRADING"
+immediate_actions = [
+  "block_new_orders",
+  "cancel_open_orders",
+  "notify_raf",
+  "append_incident_log"
+]
+manual_resume_required = true
+resume_file_delete = "/workspace/flags/STOP_TRADING"
+resume_requires_note = true
+
+[monitoring]
+poll_interval_seconds_market_hours = 30
+poll_interval_seconds_off_hours = 300
+consecutive_failures_before_degraded = 3
+
+[compliance]
+audit_log_file = "/workspace/shared/comm/audit/events.jsonl"
+write_decision_snapshot = true
+snapshot_dir = "/workspace/shared/safety/decisions"

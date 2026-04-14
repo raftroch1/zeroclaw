@@ -1,0 +1,149 @@
+version = "1.0"
+name = "alpaca-pattern-engine-byrules"
+description = "Declarative ByteRover automation rules for ZeroClaw trading workflow"
+enabled = true
+
+[defaults]
+project = "alpaca-pattern-engine"
+on_error = "log_and_continue"
+max_retries = 2
+retry_backoff_ms = 500
+
+# ------------------------------------------------------------------
+# Trigger: BEFORE_TRADE_ANALYSIS
+# Purpose: Retrieve structured context before making trade decisions.
+# ------------------------------------------------------------------
+[[rules]]
+id = "pretrade-context-retrieval"
+trigger = "before_trade_analysis"
+priority = 10
+enabled = true
+
+[rules.match]
+all_of = ["symbol_present", "analysis_request"]
+
+[[rules.actions]]
+type = "query"
+tool = "brv-query"
+query = "alpaca-pattern-engine/market-regimes Current regime gates and allowed setup families for {{symbol}}"
+store_as = "ctx.regime"
+required = true
+
+[[rules.actions]]
+type = "query"
+tool = "brv-query"
+query = "alpaca-pattern-engine/trading-patterns Relevant pattern checklist for {{candidate_pattern}} in {{regime}}"
+store_as = "ctx.pattern"
+required = true
+
+[[rules.actions]]
+type = "query"
+tool = "brv-query"
+query = "alpaca-pattern-engine/time-setups Rules for {{session_window}} including size/risk adjustments"
+store_as = "ctx.time_rules"
+required = true
+
+[[rules.actions]]
+type = "assert"
+condition = "ctx.regime != '' && ctx.pattern != '' && ctx.time_rules != ''"
+on_fail = "warn"
+message = "ByteRover context incomplete; continue using SQLite + Mem0 fallback."
+
+# ------------------------------------------------------------------
+# Trigger: AFTER_TRADE_EXECUTION
+# Purpose: Curate execution outcome and structured lessons.
+# ------------------------------------------------------------------
+[[rules]]
+id = "posttrade-curation"
+trigger = "after_trade_execution"
+priority = 20
+enabled = true
+
+[rules.match]
+all_of = ["trade_closed"]
+
+[[rules.actions]]
+type = "curate"
+tool = "brv-curate"
+path = "alpaca-pattern-engine/performance/win-loss-tracking"
+content_template = "Trade {{trade_id}} | Symbol {{symbol}} | Pattern {{pattern}} | Regime {{regime}} | Session {{session_window}} | Entry {{entry_price}} | Exit {{exit_price}} | Outcome {{outcome}} | R {{r_multiple}}"
+required = false
+
+[[rules.actions]]
+type = "curate"
+tool = "brv-curate"
+path = "alpaca-pattern-engine/trading-patterns/{{pattern}}"
+content_template = "Post-trade update: In {{regime}} during {{session_window}}, pattern {{pattern}} produced {{outcome}} (R={{r_multiple}}). Notes: {{post_trade_note}}"
+required = false
+
+[[rules.actions]]
+type = "curate"
+tool = "brv-curate"
+path = "alpaca-pattern-engine/market-regimes/{{regime}}"
+content_template = "Observed behavior from trade {{trade_id}}: {{regime_observation}}"
+required = false
+
+# ------------------------------------------------------------------
+# Trigger: AFTER_DAILY_CLOSE
+# Purpose: Curate daily strategic summary and performance updates.
+# ------------------------------------------------------------------
+[[rules]]
+id = "daily-close-curation"
+trigger = "after_daily_close"
+priority = 30
+enabled = true
+
+[rules.match]
+all_of = ["session_complete"]
+
+[[rules.actions]]
+type = "curate"
+tool = "brv-curate"
+path = "alpaca-pattern-engine/performance/strategy-metrics"
+content_template = "Date {{trade_date}} | Trades {{trade_count}} | WinRate {{win_rate}} | AvgR {{avg_r}} | MaxDD {{max_drawdown}} | Notes {{daily_summary}}"
+required = false
+
+[[rules.actions]]
+type = "curate"
+tool = "brv-curate"
+path = "alpaca-pattern-engine/safety/risk-parameters"
+content_template = "Daily risk review {{trade_date}}: breaches={{risk_breaches}}, actions={{risk_actions}}"
+required = false
+
+# ------------------------------------------------------------------
+# Trigger: ON_STRATEGY_CHANGE
+# Purpose: Create/track new strategy variant branches in ByteRover VC.
+# ------------------------------------------------------------------
+[[rules]]
+id = "strategy-change-branching"
+trigger = "on_strategy_change"
+priority = 40
+enabled = true
+
+[rules.match]
+all_of = ["strategy_variant_name_present"]
+
+[[rules.actions]]
+type = "shell"
+command = "brv vc branch {{strategy_variant_name}}"
+required = false
+
+[[rules.actions]]
+type = "curate"
+tool = "brv-curate"
+path = "alpaca-pattern-engine/strategy-variants/{{strategy_variant_name}}"
+content_template = "Variant {{strategy_variant_name}} created. Hypothesis: {{strategy_hypothesis}}. Start date: {{effective_date}}"
+required = false
+
+[[rules.actions]]
+type = "shell"
+command = "brv vc commit -m 'Initialize variant {{strategy_variant_name}}'"
+required = false
+
+# ------------------------------------------------------------------
+# Fallback policy
+# ------------------------------------------------------------------
+[fallback]
+if_tool_unavailable = "continue_without_byterover"
+emit_log_level = "warn"
+log_message = "ByteRover unavailable. ZeroClaw continues with SQLite + Mem0 memory layers."

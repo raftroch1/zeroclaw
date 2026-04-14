@@ -1,0 +1,77 @@
+name = "trading_analysis"
+version = "1.0"
+description = "Full trading cycle: data -> patterns -> regime -> risk -> execute/skip -> curate"
+owner = "lana-sterling"
+
+[runtime]
+orchestrator_mode = "delegate"
+max_concurrent_delegates = 3
+max_delegation_depth = 2
+task_timeout_seconds = 240
+
+[safety]
+config_file = "/workspace/shared/orchestration/safety_config.toml"
+stop_flag_file = "/workspace/flags/STOP_TRADING"
+require_risk_approval = true
+
+[[stages]]
+id = "market_data"
+agent = "market-data"
+input_from = ["trigger"]
+output_key = "market_data"
+on_error = "abort"
+
+[[stages]]
+id = "pattern_detection"
+agent = "pattern-detector"
+input_from = ["market_data"]
+output_key = "pattern_candidates"
+on_error = "abort"
+
+[[stages]]
+id = "regime_analysis"
+agent = "regime-analyzer"
+input_from = ["market_data", "pattern_candidates"]
+output_key = "regime_decision"
+on_error = "abort"
+
+[[stages]]
+id = "risk_check"
+agent = "risk-manager"
+input_from = ["pattern_candidates", "regime_decision", "account_snapshot"]
+output_key = "risk_decision"
+on_error = "abort"
+
+[[stages]]
+id = "execution_branch"
+agent = "trade-executor"
+input_from = ["risk_decision", "order_plan"]
+output_key = "execution_result"
+condition = "risk_decision.approved == true && regime_decision.allow_trade == true"
+on_error = "abort"
+
+[[stages]]
+id = "skip_branch"
+agent = "trade-monitor"
+input_from = ["risk_decision", "regime_decision"]
+output_key = "skip_result"
+condition = "risk_decision.approved == false || regime_decision.allow_trade == false"
+on_error = "continue"
+
+[[stages]]
+id = "knowledge_curation"
+agent = "knowledge-curator"
+input_from = ["market_data", "pattern_candidates", "regime_decision", "risk_decision", "execution_result", "skip_result"]
+output_key = "curation_result"
+on_error = "continue"
+
+[notifications]
+trade_log = "/workspace/alerts/trades.log"
+optional_webhook = ""
+notify_on = ["execution_result", "risk_reject", "stop_flag_detected", "error"]
+
+[artifacts]
+task_dir = "/workspace/shared/comm/tasks"
+result_dir = "/workspace/shared/comm/results"
+error_dir = "/workspace/shared/comm/errors"
+audit_dir = "/workspace/shared/comm/audit"

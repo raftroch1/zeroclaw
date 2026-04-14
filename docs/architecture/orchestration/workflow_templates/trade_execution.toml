@@ -1,0 +1,42 @@
+name = "trade_execution"
+version = "1.0"
+description = "Trade execution pathway with mandatory risk verification"
+owner = "lana-sterling"
+
+[runtime]
+orchestrator_mode = "delegate"
+max_concurrent_delegates = 2
+task_timeout_seconds = 120
+
+[safety]
+stop_flag_file = "/workspace/flags/STOP_TRADING"
+require_regime_allow = true
+require_risk_approval = true
+
+[[stages]]
+id = "preflight_risk_check"
+agent = "risk-manager"
+input_from = ["order_plan", "account_snapshot", "regime_decision"]
+output_key = "risk_decision"
+on_error = "abort"
+
+[[stages]]
+id = "execute_order"
+agent = "trade-executor"
+input_from = ["order_plan", "risk_decision"]
+output_key = "execution_result"
+condition = "risk_decision.approved == true"
+on_error = "abort"
+
+[[stages]]
+id = "post_execution_monitor"
+agent = "trade-monitor"
+input_from = ["execution_result"]
+output_key = "post_execution_health"
+condition = "execution_result.status == 'submitted' || execution_result.status == 'filled'"
+on_error = "continue"
+
+[notifications]
+trade_log = "/workspace/alerts/trades.log"
+optional_webhook = ""
+notify_on = ["order_submitted", "order_filled", "order_rejected", "risk_reject"]

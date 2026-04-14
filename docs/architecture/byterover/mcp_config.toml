@@ -1,0 +1,123 @@
+# ByteRover MCP configuration for ZeroClaw (config.toml excerpt)
+#
+# PURPOSE
+# -------
+# Register ByteRover as an MCP stdio server so ZeroClaw can call:
+# - brv-query   (retrieve structured project knowledge)
+# - brv-curate  (store curated knowledge)
+#
+# IMPORTANT CURRENT LIMITATION (ZeroClaw today)
+# --------------------------------------------
+# ZeroClaw currently has MCP schema support for stdio/http, but runtime code is hardcoded
+# to a specific MCP server name ("mem0-brain-surgeon"). So this config alone will not be
+# enough until either:
+#   A) Phase 1 wrapper compatibility approach is added (ships first), or
+#   B) Phase 2 generic MCP stdio client is implemented (future upgrade).
+
+[[mcp_servers]]
+name = "byterover"
+enabled = true
+transport = "stdio"
+command = "brv"
+args = ["mcp"]
+timeout_secs = 45
+
+# Optional environment variables passed to the MCP process.
+# ZeroClaw should pass these exactly to the spawned process environment.
+[mcp_servers.env]
+BRV_PROJECT_ROOT = "/workspace"
+BRV_LOG_LEVEL = "info"
+
+# -----------------------------------------------------------------------------
+# FIELD-BY-FIELD DOCUMENTATION
+# -----------------------------------------------------------------------------
+# name
+#   Logical server identifier in ZeroClaw.
+#   ZeroClaw usage:
+#     - Must be unique across mcp_servers entries.
+#     - Used for server registry lookup and diagnostics.
+#
+# enabled
+#   Enables/disables this MCP server without deleting config.
+#   ZeroClaw usage:
+#     - If false: skip startup and mark server unavailable.
+#     - If true: include in MCP initialization set.
+#
+# transport
+#   "stdio" for subprocess protocol over stdin/stdout.
+#   ZeroClaw usage:
+#     - Spawn command/args as child process.
+#     - Speak MCP JSON-RPC over stdio streams.
+#
+# command
+#   Executable name/path for MCP server process ("brv").
+#   ZeroClaw usage:
+#     - Resolve from PATH (or absolute path).
+#     - Emit clear error if executable missing.
+#
+# args
+#   CLI args for command. ByteRover MCP entrypoint is exactly: brv mcp
+#   ZeroClaw usage:
+#     - Preserve order.
+#     - No shell interpolation (execute directly).
+#
+# timeout_secs
+#   Max wait for initialization calls and tool invocations.
+#   ZeroClaw usage:
+#     - Apply request timeout + cancellation.
+#     - Return graceful "ByteRover unavailable" tool error on timeout.
+#
+# env
+#   Extra environment for MCP process.
+#   ZeroClaw usage:
+#     - Merge with inherited process env.
+#     - Do not overwrite critical env unless explicitly configured.
+#
+# url / headers
+#   Not used for stdio transport. Relevant only for HTTP MCP servers.
+
+# -----------------------------------------------------------------------------
+# PHASE 1 (SHIP NOW): SHELL WRAPPER ALTERNATIVE
+# -----------------------------------------------------------------------------
+# Since ZeroClaw currently hardcodes MCP handling by server identity, implement a thin
+# wrapper strategy and keep ByteRover optional. Exact command shape:
+#
+# 1) Start daemon in background when container starts:
+#      brv daemon --host 127.0.0.1 --port 3173 >/var/log/byterover-daemon.log 2>&1 &
+#
+# 2) Verify daemon health (non-fatal):
+#      brv status || echo "[WARN] ByteRover daemon unavailable"
+#
+# 3) Start MCP server (stdio):
+#      brv mcp
+#
+# 4) Wrapper launch command if desired:
+#      /usr/local/bin/byterover-mcp-wrapper.sh
+#
+# Suggested wrapper behavior:
+#   - Check .brv/config.json exists; initialize if missing (brv init --yes).
+#   - Attempt daemon health check.
+#   - Exec "brv mcp" even if daemon check fails (MCP can surface runtime unavailability).
+#   - Exit with non-zero only on unrecoverable startup errors (missing brv binary, bad root).
+
+# -----------------------------------------------------------------------------
+# PHASE 2 (FUTURE): GENERIC MCP STDIO CLIENT IN ZEROCLAW
+# -----------------------------------------------------------------------------
+# Target architecture:
+#   1) Parse all [[mcp_servers]] entries into a registry (name -> MCPServerConfig).
+#   2) For each enabled stdio server, spawn child process and perform MCP initialize.
+#   3) Dynamically discover tools from each server and register into ZeroClaw tool router.
+#   4) Route tool calls by tool name + owning server, not hardcoded server names.
+#   5) Add per-server health state, retries, and circuit breaker.
+#   6) Preserve graceful degradation: if byterover fails, core agent + SQLite + Mem0 continue.
+#
+# Rust module sketch:
+#   tools/
+#     mcp/
+#       client.rs        # Generic stdio JSON-RPC MCP client
+#       registry.rs      # Server registry + dynamic tool table
+#       health.rs        # liveness/readiness + retry backoff
+#       adapter.rs       # Tool call adapter between ZeroClaw and MCP tool schema
+#
+# Result:
+#   ByteRover, Mem0, and any future MCP server become pure configuration additions.

@@ -1,0 +1,49 @@
+name = "knowledge_curation"
+version = "1.0"
+description = "Post-trade curation into ByteRover and local memory layers"
+owner = "lana-sterling"
+
+[trigger]
+type = "event"
+event = "trade_closed"
+
+[runtime]
+orchestrator_mode = "solo"
+task_timeout_seconds = 180
+
+[[stages]]
+id = "collect_trade_context"
+agent = "trade-monitor"
+input_from = ["trade_id"]
+output_key = "trade_context"
+on_error = "abort"
+
+[[stages]]
+id = "curate_pattern_lessons"
+agent = "knowledge-curator"
+input_from = ["trade_context"]
+output_key = "pattern_curations"
+on_error = "continue"
+
+[[stages]]
+id = "curate_regime_lessons"
+agent = "knowledge-curator"
+input_from = ["trade_context"]
+output_key = "regime_curations"
+on_error = "continue"
+
+[[stages]]
+id = "curate_performance_metrics"
+agent = "knowledge-curator"
+input_from = ["trade_context"]
+output_key = "performance_curations"
+on_error = "continue"
+
+[knowledge]
+query_command_template = "brv query \"{{question}}\""
+curate_command_template = "brv curate \"{{knowledge}}\""
+quality_bar = "Reusable, testable, evidence-linked"
+
+[output]
+curation_log = "/workspace/shared/knowledge/curation.log"
+summary_path = "/workspace/shared/knowledge/post_trade/{{trade_id}}.md"
